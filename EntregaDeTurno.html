@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Entrega de Turno">
+<meta name="theme-color" content="#1A4D8F">
+<title>Entrega de Turno</title>
+<style>
+  :root{
+    --azul:#1A4D8F; --azul-d:#143c70; --bg:#eef1f5; --card:#ffffff;
+    --tinta:#1f2733; --gris:#5f6368; --linea:#e2e6ec; --verde:#1e8e5a; --rojo:#c0392b;
+    --sombra:0 1px 3px rgba(20,40,80,.08),0 1px 2px rgba(20,40,80,.06);
+    --radio:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--tinta); font-size:16px; line-height:1.4;
+    padding-bottom:96px;
+  }
+  .safe{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  header.app{
+    position:sticky; top:0; z-index:20; background:var(--azul); color:#fff;
+    padding:calc(env(safe-area-inset-top) + 10px) 16px 10px; box-shadow:var(--sombra);
+  }
+  header.app h1{margin:0; font-size:17px; font-weight:600; letter-spacing:.2px; display:flex; align-items:center; gap:8px}
+  header.app .sub{font-size:12px; opacity:.85; margin-top:2px}
+  .navbtns{position:absolute; right:12px; top:calc(env(safe-area-inset-top) + 8px); display:flex; gap:6px}
+  .navbtns button{background:rgba(255,255,255,.16); color:#fff; border:0; border-radius:10px; padding:8px 10px; font-size:13px; font-weight:600}
+  .wrap{max-width:820px; margin:0 auto; padding:12px}
+  .banner{background:#fff7e6; border:1px solid #ffe1a6; color:#8a5b00; padding:8px 12px; border-radius:10px; font-size:13px; margin:8px 0}
+  .card{background:var(--card); border-radius:var(--radio); box-shadow:var(--sombra); margin:10px 0; overflow:hidden}
+  .card .head{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; cursor:pointer; user-select:none}
+  .card .head .t{font-weight:600; font-size:15px; display:flex; align-items:center; gap:8px}
+  .badge{background:var(--azul); color:#fff; border-radius:999px; min-width:22px; height:22px; padding:0 7px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; justify-content:center}
+  .badge.zero{background:#c7ccd4}
+  .chev{color:var(--gris); font-size:13px; transition:transform .15s}
+  .card.open .chev{transform:rotate(90deg)}
+  .card .body{display:none; padding:0 14px 12px}
+  .card.open .body{display:block}
+  .meta-grid{display:grid; grid-template-columns:1fr; gap:10px}
+  label.f{display:block; font-size:12px; color:var(--gris); margin:0 0 4px 2px; font-weight:600}
+  input,textarea,select{
+    width:100%; font:inherit; color:var(--tinta); background:#fff; border:1px solid var(--linea);
+    border-radius:10px; padding:10px 12px; outline:none;
+  }
+  input:focus,textarea:focus,select:focus{border-color:var(--azul); box-shadow:0 0 0 3px rgba(26,77,143,.12)}
+  textarea{min-height:64px; resize:vertical}
+  .row{display:flex; gap:8px}
+  .row>*{flex:1}
+  .row .short{flex:0 0 84px}
+  .row .edad{flex:0 0 72px}
+  .row .ficha{flex:0 0 120px}
+  .summary{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:2px 0 4px}
+  .metric{background:var(--card); border-radius:12px; box-shadow:var(--sombra); padding:10px; text-align:center}
+  .metric .n{font-size:22px; font-weight:800; color:var(--azul); line-height:1}
+  .metric .l{font-size:11px; color:var(--gris); margin-top:3px}
+  .metric small{display:block; font-size:10.5px; color:var(--gris); margin-top:2px}
+  .entry{border:1px solid var(--linea); border-radius:12px; padding:10px 12px; margin:8px 0; background:#fbfcfe}
+  .entry .ttl{font-weight:600; font-size:14px}
+  .entry .meta{font-size:12.5px; color:var(--gris); margin-top:2px; white-space:pre-wrap}
+  .entry .acts{margin-top:8px; display:flex; gap:8px}
+  .btn{border:0; border-radius:10px; padding:10px 14px; font-size:14px; font-weight:600; background:#eef1f5; color:var(--tinta)}
+  .btn.pri{background:var(--azul); color:#fff}
+  .btn.sm{padding:7px 12px; font-size:13px}
+  .btn.ghost{background:#fff; border:1px solid var(--linea)}
+  .btn.danger{background:#fff; color:var(--rojo); border:1px solid #f0c7c2}
+  .addbtn{width:100%; margin-top:6px; background:#eaf1fb; color:var(--azul); border:1px dashed #b9cdec}
+  .empty{color:var(--gris); font-size:13px; padding:6px 2px}
+  /* barra inferior */
+  .actionbar{
+    position:fixed; left:0; right:0; bottom:0; z-index:30; background:rgba(255,255,255,.96);
+    backdrop-filter:saturate(180%) blur(8px); border-top:1px solid var(--linea);
+    padding:10px 12px calc(env(safe-area-inset-bottom) + 10px); display:flex; gap:8px; max-width:820px; margin:0 auto;
+  }
+  .actionbar .btn{flex:1}
+  /* modal */
+  .modal{position:fixed; inset:0; z-index:50; background:rgba(20,30,50,.45); display:none; align-items:flex-end; justify-content:center}
+  .modal.show{display:flex}
+  .sheet{background:#fff; width:100%; max-width:820px; border-radius:18px 18px 0 0; max-height:92vh; overflow:auto; padding:14px 16px calc(env(safe-area-inset-bottom) + 16px)}
+  .sheet h3{margin:6px 0 12px; font-size:16px}
+  .sheet .fld{margin-bottom:12px}
+  .sheet .foot{display:flex; gap:8px; margin-top:6px; position:sticky; bottom:0; background:#fff; padding-top:8px}
+  .sheet .foot .btn{flex:1}
+  /* firma */
+  #sigPad{width:100%; height:200px; background:#fff; border:1px solid var(--linea); border-radius:12px; touch-action:none}
+  .hist-item{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--linea)}
+  .hist-item:last-child{border-bottom:0}
+  .hist-item .d{font-weight:600}
+  .hist-item .s{font-size:12px; color:var(--gris)}
+  .screen{display:none}
+  .screen.active{display:block}
+  .hint{font-size:12.5px; color:var(--gris); margin:6px 2px}
+  .pill{display:inline-block; font-size:11px; background:#eef1f5; color:var(--gris); border-radius:999px; padding:2px 8px; margin-left:6px}
+</style>
+</head>
+<body class="safe">
+<header class="app">
+  <h1>📋 Entrega de Turno</h1>
+  <div class="sub" id="subHdr">Servicio OBGIN — HRA</div>
+  <div class="navbtns">
+    <button id="btnFirma">✍︎ Firma</button>
+    <button id="btnHist">🗂 Historial</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div id="storeBanner" class="banner" style="display:none">
+    ⚠︎ Estás viendo la app dentro del visor. Para uso real y que <b>guarde tus datos</b>,
+    descarga el archivo y ábrelo en Safari (luego “Añadir a pantalla de inicio”).
+  </div>
+
+  <!-- ===== PANTALLA PRINCIPAL ===== -->
+  <div id="scrMain" class="screen active">
+
+    <div class="summary" id="summary"></div>
+
+    <div class="card open" id="cardMeta">
+      <div class="head" data-toggle><div class="t">🗓 Datos del turno</div><div class="chev">▶</div></div>
+      <div class="body">
+        <div class="meta-grid">
+          <div><label class="f">Fecha (turno 24 h)</label><input type="date" id="mFecha"></div>
+          <div><label class="f">Staff</label><input type="text" id="mStaff" placeholder="Dr. Araya"></div>
+          <div><label class="f">Internos</label><input type="text" id="mInternos" placeholder="Apellido(s)"></div>
+          <div><label class="f">Total atenciones box de Urgencia</label><input type="number" inputmode="numeric" id="mConsultas" placeholder="0"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sections"></div>
+
+  </div>
+
+  <!-- ===== PANTALLA FIRMA ===== -->
+  <div id="scrFirma" class="screen">
+    <div class="card open"><div class="head"><div class="t">✍︎ Tu firma (“mosca”)</div></div>
+      <div class="body">
+        <p class="hint">Dibújala una sola vez. Queda guardada y se estampa en cada Word que generes.</p>
+        <canvas id="sigPad"></canvas>
+        <div class="row" style="margin-top:10px">
+          <button class="btn ghost" id="sigClear">Borrar</button>
+          <button class="btn pri" id="sigSave">Guardar firma</button>
+        </div>
+        <div id="sigStatus" class="hint"></div>
+        <button class="btn" id="sigBack" style="margin-top:10px; width:100%">← Volver</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PANTALLA HISTORIAL ===== -->
+  <div id="scrHist" class="screen">
+    <div class="card open"><div class="head"><div class="t">🗂 Turnos guardados</div></div>
+      <div class="body">
+        <div id="histList"><div class="empty">Aún no hay turnos archivados.</div></div>
+        <button class="btn" id="histBack" style="margin-top:12px; width:100%">← Volver</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- barra de acciones (solo en pantalla principal) -->
+<div class="actionbar" id="actionbar">
+  <button class="btn ghost" id="btnCerrar">Cerrar turno</button>
+  <button class="btn ghost" id="btnDescargar">⬇︎ Word</button>
+  <button class="btn pri" id="btnEnviar">✉︎ Enviar por correo</button>
+</div>
+
+<!-- modal editor -->
+<div class="modal" id="modal">
+  <div class="sheet">
+    <h3 id="mTitle">Añadir</h3>
+    <div id="mForm"></div>
+    <div class="foot">
+      <button class="btn danger" id="mDelete" style="display:none">Eliminar</button>
+      <button class="btn ghost" id="mCancel">Cancelar</button>
+      <button class="btn pri" id="mSave">Guardar</button>
+    </div>
+  </div>
+</div>
+<script>
+/* ============================================================================
+ * docxcore.js — Generador de .docx 100% offline, sin dependencias.
+ * DOM-free: corre en Node (test) y en el navegador (app) sin cambios.
+ * Construye OOXML a mano y empaqueta un ZIP con método STORED (sin compresión).
+ * Expone: buildDocx(turno, opts) -> Uint8Array
+ * (c) Proyecto "Entrega de Turno" — v0.1
+ * ==========================================================================*/
+(function (root) {
+  "use strict";
+
+  // ---- utilidades de bytes -------------------------------------------------
+  var te = new TextEncoder();
+  function strBytes(s) { return te.encode(s); }
+
+  // CRC32 (tabla estándar)
+  var CRC_TABLE = (function () {
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  // Escritor de ZIP (STORED). files = [{name, data:Uint8Array}]
+  function zipStore(files) {
+    var chunks = [], offset = 0, central = [];
+    function pushU16(arr, v) { arr.push(v & 0xFF, (v >>> 8) & 0xFF); }
+    function pushU32(arr, v) { arr.push(v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF); }
+
+    files.forEach(function (f) {
+      var nameB = strBytes(f.name);
+      var crc = crc32(f.data);
+      var size = f.data.length;
+
+      var lh = [];
+      pushU32(lh, 0x04034b50); // local file header sig
+      pushU16(lh, 20);         // version needed
+      pushU16(lh, 0x0800);     // flags: UTF-8 filename
+      pushU16(lh, 0);          // compression: STORED
+      pushU16(lh, 0);          // mod time
+      pushU16(lh, 0x21);       // mod date (1980-01-01)
+      pushU32(lh, crc);
+      pushU32(lh, size);       // compressed size
+      pushU32(lh, size);       // uncompressed size
+      pushU16(lh, nameB.length);
+      pushU16(lh, 0);          // extra len
+      var lhB = new Uint8Array(lh);
+
+      chunks.push(lhB, nameB, f.data);
+      var localOffset = offset;
+      offset += lhB.length + nameB.length + size;
+
+      var cd = [];
+      pushU32(cd, 0x02014b50); // central dir sig
+      pushU16(cd, 20);         // version made by
+      pushU16(cd, 20);         // version needed
+      pushU16(cd, 0x0800);     // flags UTF-8
+      pushU16(cd, 0);          // compression
+      pushU16(cd, 0);          // mod time
+      pushU16(cd, 0x21);       // mod date
+      pushU32(cd, crc);
+      pushU32(cd, size);
+      pushU32(cd, size);
+      pushU16(cd, nameB.length);
+      pushU16(cd, 0);          // extra
+      pushU16(cd, 0);          // comment
+      pushU16(cd, 0);          // disk number start
+      pushU16(cd, 0);          // internal attrs
+      pushU32(cd, 0);          // external attrs
+      pushU32(cd, localOffset);
+      central.push(new Uint8Array(cd), nameB);
+    });
+
+    var cdStart = offset, cdBytes = 0;
+    central.forEach(function (b) { chunks.push(b); cdBytes += b.length; offset += b.length; });
+
+    var eocd = [];
+    pushU32(eocd, 0x06054b50);
+    pushU16(eocd, 0); pushU16(eocd, 0);
+    pushU16(eocd, files.length); pushU16(eocd, files.length);
+    pushU32(eocd, cdBytes);
+    pushU32(eocd, cdStart);
+    pushU16(eocd, 0);
+    chunks.push(new Uint8Array(eocd));
+
+    var total = chunks.reduce(function (a, b) { return a + b.length; }, 0);
+    var out = new Uint8Array(total), p = 0;
+    chunks.forEach(function (b) { out.set(b, p); p += b.length; });
+    return out;
+  }
+
+  // ---- XML helpers ---------------------------------------------------------
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+  // Un texto de celda/párrafo puede traer saltos de línea -> múltiples <w:t> con <w:br/>
+  function runsFromText(text, opts) {
+    opts = opts || {};
+    var rpr = "";
+    if (opts.bold) rpr += "<w:b/>";
+    if (opts.sz) rpr += '<w:sz w:val="' + opts.sz + '"/><w:szCs w:val="' + opts.sz + '"/>';
+    if (opts.color) rpr += '<w:color w:val="' + opts.color + '"/>';
+    if (opts.caps) rpr += "<w:caps/>";
+    var rprXml = rpr ? "<w:rPr>" + rpr + "</w:rPr>" : "";
+    var parts = String(text == null ? "" : text).split(/\r?\n/);
+    var runs = "";
+    for (var i = 0; i < parts.length; i++) {
+      if (i > 0) runs += "<w:r>" + rprXml + "<w:br/></w:r>";
+      runs += "<w:r>" + rprXml + '<w:t xml:space="preserve">' + esc(parts[i]) + "</w:t></w:r>";
+    }
+    return runs;
+  }
+  function para(text, opts) {
+    opts = opts || {};
+    var ppr = "";
+    var pprInner = "";
+    if (opts.align) pprInner += '<w:jc w:val="' + opts.align + '"/>';
+    if (opts.spaceBefore != null || opts.spaceAfter != null) {
+      pprInner += '<w:spacing w:before="' + (opts.spaceBefore || 0) + '" w:after="' + (opts.spaceAfter || 0) + '"/>';
+    }
+    if (opts.shd) pprInner += '<w:shd w:val="clear" w:color="auto" w:fill="' + opts.shd + '"/>';
+    if (pprInner) ppr = "<w:pPr>" + pprInner + "</w:pPr>";
+    return "<w:p>" + ppr + runsFromText(text, opts) + "</w:p>";
+  }
+
+  function cell(width, text, opts) {
+    opts = opts || {};
+    var shd = opts.shd ? '<w:shd w:val="clear" w:color="auto" w:fill="' + opts.shd + '"/>' : "";
+    var valign = '<w:vAlign w:val="top"/>';
+    var pOpts = { bold: opts.bold, sz: opts.sz || 18, color: opts.color };
+    return "<w:tc><w:tcPr><w:tcW w:w=\"" + width + "\" w:type=\"dxa\"/>" + shd + valign +
+      "</w:tcPr>" + para(text, pOpts) + "</w:tc>";
+  }
+
+  function table(colWidths, rows) {
+    // rows = [ [ {text,bold,shd,color,sz}, ... ], ... ]
+    var totalW = colWidths.reduce(function (a, b) { return a + b; }, 0);
+    var borders =
+      "<w:tblBorders>" +
+      ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(function (s) {
+        return '<w:' + s + ' w:val="single" w:sz="4" w:space="0" w:color="9AA0A6"/>';
+      }).join("") + "</w:tblBorders>";
+    var grid = "<w:tblGrid>" + colWidths.map(function (w) { return '<w:gridCol w:w="' + w + '"/>'; }).join("") + "</w:tblGrid>";
+    var trs = rows.map(function (r) {
+      var tcs = r.map(function (c, i) {
+        return cell(colWidths[i], c.text, c);
+      }).join("");
+      return "<w:tr>" + tcs + "</w:tr>";
+    }).join("");
+    return "<w:tbl><w:tblPr><w:tblW w:w=\"" + totalW + "\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/>" +
+      borders + "</w:tblPr>" + grid + trs + "</w:tbl>";
+  }
+
+  // ---- render de identificación -------------------------------------------
+  function fmtIdent(id) {
+    if (!id) return "";
+    if (typeof id === "string") return id;
+    var s = (id.nombre || "").trim();
+    if (id.edad != null && id.edad !== "") s += " (" + id.edad + "a)";
+    if (id.ficha) s += " " + id.ficha;
+    return s.trim();
+  }
+
+  // ---- sección genérica ----------------------------------------------------
+  function sectionHeading(txt) {
+    return para(txt, { bold: true, caps: true, sz: 20, color: "1A4D8F", spaceBefore: 160, spaceAfter: 60 });
+  }
+  var HDR_SHD = "1A4D8F", HDR_COLOR = "FFFFFF";
+  function headerRow(labels) {
+    return labels.map(function (l) { return { text: l, bold: true, shd: HDR_SHD, color: HDR_COLOR, sz: 18 }; });
+  }
+
+  // ---- documento -----------------------------------------------------------
+  function buildDocumentXml(turno, hasSignature, sigExtent) {
+    var t = turno || {};
+    var meta = t.meta || {};
+    var body = [];
+
+    // Título
+    body.push(para("ENTREGA DE TURNO", { bold: true, caps: true, sz: 30, color: "1A4D8F", align: "center", spaceAfter: 0 }));
+    body.push(para("Servicio de Obstetricia y Ginecología — Hospital Regional de Antofagasta", { sz: 18, align: "center", color: "5F6368", spaceAfter: 120 }));
+
+    // Tabla de encabezado (Staff / Internos / Fecha)
+    body.push(table([3600, 3600, 3600], [
+      headerRow(["Staff", "Internos", "Fecha (turno 24 h)"]),
+      [
+        { text: (meta.staff && meta.staff.length ? meta.staff.join(" / ") : ""), sz: 18 },
+        { text: (meta.internos && meta.internos.length ? meta.internos.join(" / ") : ""), sz: 18 },
+        { text: meta.fecha || "", sz: 18 }
+      ]
+    ]));
+
+    // Tabla-resumen (derivada)
+    var nac = t.nacimientos || [];
+    var vag = nac.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf("vag") === 0; }).length;
+    var ces = nac.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf("ces") === 0; }).length;
+    var forc = nac.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf("fór") === 0 || (n.tipoParto || "").toLowerCase().indexOf("for") === 0; }).length;
+    var interv = (t.intervenciones || []).length;
+    var consultas = (t.urgencia && t.urgencia.consultas != null) ? t.urgencia.consultas : "";
+    body.push(para("", { spaceAfter: 40 }));
+    body.push(table([1800, 1800, 1800, 1800, 1800, 1800], [
+      headerRow(["Nacimientos", "Vaginales", "Cesáreas", "Fórceps", "Interv. gineco", "Consultas box"]),
+      [
+        { text: String(nac.length), sz: 20, bold: true },
+        { text: String(vag), sz: 20 },
+        { text: String(ces), sz: 20 },
+        { text: String(forc), sz: 20 },
+        { text: String(interv), sz: 20 },
+        { text: String(consultas), sz: 20 }
+      ]
+    ]));
+
+    // Secciones (solo se imprimen si tienen filas)
+    function renderRows(items, mapFn) { return items.map(mapFn); }
+
+    // 1. Preparto (Salas de Parto Integral)
+    var pi = t.partoIntegral || [];
+    if (pi.length) {
+      body.push(sectionHeading("Salas de Parto Integral (Preparto)"));
+      var rows = [headerRow(["Sala", "Identificación", "Diagnósticos", "Condición actual"])];
+      renderRows(pi, function (x) {
+        rows.push([
+          { text: x.sala || "", sz: 18 },
+          { text: fmtIdent(x.ident), sz: 18, bold: true },
+          { text: x.diagnosticos || "", sz: 18 },
+          { text: x.condicion || "", sz: 18 }
+        ]);
+      });
+      body.push(table([900, 3000, 3000, 3900], rows));
+    }
+
+    // 2. Observación
+    var ob = t.observacion || [];
+    if (ob.length) {
+      body.push(sectionHeading("Salas de Observación"));
+      var r2 = [headerRow(["N°", "Identificación", "Diagnósticos", "Condición actual"])];
+      renderRows(ob, function (x) {
+        r2.push([
+          { text: x.n || "", sz: 18 },
+          { text: fmtIdent(x.ident), sz: 18, bold: true },
+          { text: x.diagnosticos || "", sz: 18 },
+          { text: x.condicion || "", sz: 18 }
+        ]);
+      });
+      body.push(table([900, 3000, 3000, 3900], r2));
+    }
+
+    // 3. Otras unidades
+    var ou = t.otrasUnidades || [];
+    if (ou.length) {
+      body.push(sectionHeading("Pacientes en Obstetricia-Ginecología y/u otras unidades"));
+      var r3 = [headerRow(["Cama", "Identificación", "Diagnósticos", "Condición actual"])];
+      renderRows(ou, function (x) {
+        r3.push([
+          { text: x.cama || "", sz: 18 },
+          { text: fmtIdent(x.ident), sz: 18, bold: true },
+          { text: x.diagnosticos || "", sz: 18 },
+          { text: x.condicion || "", sz: 18 }
+        ]);
+      });
+      body.push(table([1100, 2900, 2900, 3900], r3));
+    }
+
+    // 4. Intervenciones ginecológicas (operadas)
+    var iv = t.intervenciones || [];
+    if (iv.length) {
+      body.push(sectionHeading("Intervenciones Ginecológicas (operadas)"));
+      var r4 = [headerRow(["Identificación", "Diagnóstico", "Intervención", "Comentarios"])];
+      renderRows(iv, function (x) {
+        r4.push([
+          { text: fmtIdent(x.ident), sz: 18, bold: true },
+          { text: x.diagnostico || "", sz: 18 },
+          { text: x.intervencion || "", sz: 18 },
+          { text: x.comentarios || "", sz: 18 }
+        ]);
+      });
+      body.push(table([2700, 2400, 2400, 3300], r4));
+    }
+
+    // 5. Ingresos a hospitalización
+    var ig = t.ingresos || [];
+    if (ig.length) {
+      body.push(sectionHeading("Ingresos a Hospitalización"));
+      var r5 = [headerRow(["Cama", "Identificación", "Diagnósticos", "Manejo propuesto", "Comentarios"])];
+      renderRows(ig, function (x) {
+        r5.push([
+          { text: x.cama || "", sz: 18 },
+          { text: fmtIdent(x.ident), sz: 18, bold: true },
+          { text: x.diagnosticos || "", sz: 18 },
+          { text: x.manejo || "", sz: 18 },
+          { text: x.comentarios || "", sz: 18 }
+        ]);
+      });
+      body.push(table([1000, 2450, 2450, 2450, 2450], r5));
+    }
+
+    // 6. Nacimientos (partos)
+    if (nac.length) {
+      body.push(sectionHeading("Nacimientos (partos atendidos)"));
+      var r6 = [headerRow(["Nombre", "Tipo de parto", "Información RN", "Comentarios"])];
+      renderRows(nac, function (x) {
+        r6.push([
+          { text: x.nombre || "", sz: 18, bold: true },
+          { text: x.tipoParto || "", sz: 18 },
+          { text: x.infoRN || "", sz: 18 },
+          { text: x.comentarios || "", sz: 18 }
+        ]);
+      });
+      body.push(table([2800, 1800, 3100, 3100], r6));
+    }
+
+    // 7. Peritajes médico-legales (NUEVO)
+    var pe = t.peritajes || [];
+    if (pe.length) {
+      body.push(sectionHeading("Peritajes Médico-Legales"));
+      var r7 = [headerRow(["Identificación", "Tipo de peritaje", "Hallazgos"])];
+      renderRows(pe, function (x) {
+        r7.push([
+          { text: fmtIdent(x.ident), sz: 18, bold: true },
+          { text: x.tipo || "", sz: 18 },
+          { text: x.hallazgos || "", sz: 18 }
+        ]);
+      });
+      body.push(table([3000, 2400, 5400], r7));
+    }
+
+    // Firma (mosca)
+    body.push(para("", { spaceBefore: 240 }));
+    if (hasSignature && sigExtent) {
+      body.push(
+        "<w:p><w:pPr><w:jc w:val=\"right\"/></w:pPr><w:r><w:drawing>" +
+        "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">" +
+        "<wp:extent cx=\"" + sigExtent.cx + "\" cy=\"" + sigExtent.cy + "\"/>" +
+        "<wp:docPr id=\"1\" name=\"mosca\"/><a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">" +
+        "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">" +
+        "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">" +
+        "<pic:nvPicPr><pic:cNvPr id=\"1\" name=\"mosca\"/><pic:cNvPicPr/></pic:nvPicPr>" +
+        "<pic:blipFill><a:blip r:embed=\"rId1\"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>" +
+        "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" + sigExtent.cx + "\" cy=\"" + sigExtent.cy + "\"/></a:xfrm>" +
+        "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline>" +
+        "</w:drawing></w:r></w:p>"
+      );
+    }
+    body.push(para((meta.staff && meta.staff.length ? meta.staff.join(" / ") : ""), { align: "right", sz: 18, bold: true, spaceBefore: 0 }));
+    body.push(para("Documento administrativo de referencia interna del turno.", { align: "right", sz: 14, color: "5F6368" }));
+
+    var sect = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr>';
+
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">' +
+      "<w:body>" + body.join("") + sect + "</w:body></w:document>";
+  }
+
+  // ---- base64 -> bytes (para la firma PNG en el navegador) -----------------
+  function b64ToBytes(b64) {
+    if (b64.indexOf(",") >= 0) b64 = b64.split(",")[1];
+    var bin = (typeof atob === "function")
+      ? atob(b64)
+      : Buffer.from(b64, "base64").toString("binary");
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) & 0xFF;
+    return out;
+  }
+
+  // ---- API principal -------------------------------------------------------
+  // opts.signature = { bytes:Uint8Array|base64string, w:px, h:px }  (opcional)
+  function buildDocx(turno, opts) {
+    opts = opts || {};
+    var files = [];
+    var hasSig = false, sigExtent = null, sigBytes = null;
+
+    if (opts.signature && opts.signature.bytes) {
+      sigBytes = (typeof opts.signature.bytes === "string")
+        ? b64ToBytes(opts.signature.bytes) : opts.signature.bytes;
+      var wpx = opts.signature.w || 300, hpx = opts.signature.h || 120;
+      var widthIn = 1.7; // pulgadas
+      var cx = Math.round(widthIn * 914400);
+      var cy = Math.round(cx * (hpx / wpx));
+      sigExtent = { cx: cx, cy: cy };
+      hasSig = true;
+    }
+
+    var contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Default Extension="png" ContentType="image/png"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      "</Types>";
+
+    var rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
+      "</Relationships>";
+
+    var docXml = buildDocumentXml(turno, hasSig, sigExtent);
+
+    files.push({ name: "[Content_Types].xml", data: strBytes(contentTypes) });
+    files.push({ name: "_rels/.rels", data: strBytes(rootRels) });
+    files.push({ name: "word/document.xml", data: strBytes(docXml) });
+
+    if (hasSig) {
+      var docRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/mosca.png"/>' +
+        "</Relationships>";
+      files.push({ name: "word/_rels/document.xml.rels", data: strBytes(docRels) });
+      files.push({ name: "word/media/mosca.png", data: sigBytes });
+    }
+
+    return zipStore(files);
+  }
+
+  var api = { buildDocx: buildDocx, fmtIdent: fmtIdent, crc32: crc32, zipStore: zipStore };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  root.DocxCore = api;
+})(typeof self !== "undefined" ? self : this);
+</script>
+<script>
+/* ================= Entrega de Turno — app v0.1 ================= */
+(function () {
+  "use strict";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* ---------- esquema de secciones (una sola fuente de verdad) ---------- */
+  var IDENT = { k: "ident", label: "Identificación (paciente)", type: "ident" };
+  var SECTIONS = [
+    { key: "partoIntegral", icon: "🤰", title: "Preparto (Salas de Parto Integral)",
+      fields: [{ k: "sala", label: "Sala", type: "short" }, IDENT,
+               { k: "diagnosticos", label: "Diagnósticos", type: "area" },
+               { k: "condicion", label: "Condición actual", type: "area" }] },
+    { key: "observacion", icon: "👁", title: "Salas de Observación",
+      fields: [{ k: "n", label: "N°", type: "short" }, IDENT,
+               { k: "diagnosticos", label: "Diagnósticos", type: "area" },
+               { k: "condicion", label: "Condición actual", type: "area" }] },
+    { key: "otrasUnidades", icon: "🏥", title: "Otras unidades (pacientes en visita)",
+      fields: [{ k: "cama", label: "Cama", type: "short" }, IDENT,
+               { k: "diagnosticos", label: "Diagnósticos", type: "area" },
+               { k: "condicion", label: "Condición actual", type: "area" }] },
+    { key: "intervenciones", icon: "🔧", title: "Intervenciones ginecológicas (operadas)",
+      fields: [IDENT, { k: "diagnostico", label: "Diagnóstico", type: "area" },
+               { k: "intervencion", label: "Intervención", type: "text" },
+               { k: "comentarios", label: "Comentarios", type: "area" }] },
+    { key: "ingresos", icon: "➕", title: "Ingresos a hospitalización",
+      fields: [{ k: "cama", label: "Cama", type: "short" }, IDENT,
+               { k: "diagnosticos", label: "Diagnósticos", type: "area" },
+               { k: "manejo", label: "Manejo propuesto", type: "area" },
+               { k: "comentarios", label: "Comentarios", type: "area" }] },
+    { key: "nacimientos", icon: "👶", title: "Nacimientos (partos atendidos)",
+      fields: [{ k: "nombre", label: "Nombre de la madre", type: "text" },
+               { k: "tipoParto", label: "Tipo de parto", type: "select", options: ["Vaginal", "Cesárea", "Fórceps"] },
+               { k: "infoRN", label: "Información RN", type: "area" },
+               { k: "comentarios", label: "Comentarios", type: "area" }] },
+    { key: "peritajes", icon: "⚖️", title: "Peritajes médico-legales",
+      fields: [IDENT, { k: "tipo", label: "Tipo de peritaje", type: "text" },
+               { k: "hallazgos", label: "Hallazgos", type: "area" }] }
+  ];
+  var SECMAP = {}; SECTIONS.forEach(function (s) { SECMAP[s.key] = s; });
+  // secciones que se "arrastran" al siguiente turno (pacientes que continúan)
+  var CARRY = ["partoIntegral", "observacion", "otrasUnidades", "ingresos"];
+
+  /* ---------- estado ---------- */
+  function emptyTurno() {
+    var t = { meta: { fecha: todayISO(), staff: [], internos: [] }, urgencia: { consultas: "" } };
+    SECTIONS.forEach(function (s) { t[s.key] = []; });
+    return t;
+  }
+  var state = { turno: emptyTurno(), signature: null, history: [] };
+  var storageOK = true;
+
+  function todayISO() { var d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function isoToDMY(iso) { if (!iso) return ""; var p = iso.split("-"); return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : iso; }
+
+  /* ---------- persistencia (IndexedDB con fallback en memoria) ---------- */
+  var DB = null;
+  function openDB() {
+    return new Promise(function (res) {
+      try {
+        var rq = indexedDB.open("entregaTurno", 1);
+        rq.onupgradeneeded = function (e) { e.target.result.createObjectStore("kv"); };
+        rq.onsuccess = function (e) { DB = e.target.result; res(true); };
+        rq.onerror = function () { storageOK = false; res(false); };
+      } catch (err) { storageOK = false; res(false); }
+    });
+  }
+  function kvGet(key) {
+    return new Promise(function (res) {
+      if (!DB) return res(undefined);
+      try { var tx = DB.transaction("kv", "readonly").objectStore("kv").get(key);
+        tx.onsuccess = function () { res(tx.result); }; tx.onerror = function () { res(undefined); };
+      } catch (e) { res(undefined); }
+    });
+  }
+  function kvSet(key, val) {
+    return new Promise(function (res) {
+      if (!DB) return res(false);
+      try { var tx = DB.transaction("kv", "readwrite").objectStore("kv").put(val, key);
+        tx.onsuccess = function () { res(true); }; tx.onerror = function () { res(false); };
+      } catch (e) { res(false); }
+    });
+  }
+  var saveTimer = null;
+  function saveSoon() { clearTimeout(saveTimer); saveTimer = setTimeout(function () { kvSet("current", state.turno); }, 300); }
+
+  /* ---------- derivados ---------- */
+  function counts() {
+    var nac = state.turno.nacimientos || [];
+    function c(pfx) { return nac.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf(pfx) === 0; }).length; }
+    return { nac: nac.length, vag: c("vag"), ces: c("ces"), forc: c("f"), interv: (state.turno.intervenciones || []).length,
+             consultas: state.turno.urgencia.consultas || 0 };
+  }
+
+  /* ---------- render principal ---------- */
+  function renderSummary() {
+    var c = counts();
+    $("#summary").innerHTML =
+      metric(c.nac, "Nacimientos", "V " + c.vag + " · C " + c.ces + " · F " + c.forc) +
+      metric(c.interv, "Interv. gineco", "operadas") +
+      metric(c.consultas, "Consultas box", "Urgencia");
+  }
+  function metric(n, l, small) {
+    return '<div class="metric"><div class="n">' + n + '</div><div class="l">' + l + '</div><small>' + small + '</small></div>';
+  }
+
+  function identSummary(id) { return (window.DocxCore ? DocxCore.fmtIdent(id) : (id && id.nombre) || ""); }
+
+  function entrySummary(secKey, item) {
+    if (secKey === "nacimientos") return { ttl: item.nombre || "(sin nombre)", meta: [item.tipoParto, item.infoRN].filter(Boolean).join(" · ") };
+    var ttl = identSummary(item.ident) || "(sin identificación)";
+    var prefix = item.sala ? "Sala " + item.sala + " · " : (item.n ? "N° " + item.n + " · " : (item.cama ? item.cama + " · " : ""));
+    var meta = (prefix + (item.diagnostico || item.diagnosticos || item.tipo || "")).trim();
+    return { ttl: ttl, meta: meta };
+  }
+
+  function renderSections() {
+    var host = $("#sections"); host.innerHTML = "";
+    SECTIONS.forEach(function (sec) {
+      var items = state.turno[sec.key] || [];
+      var card = document.createElement("div");
+      card.className = "card" + (items.length ? " open" : "");
+      card.innerHTML =
+        '<div class="head" data-toggle><div class="t">' + sec.icon + " " + sec.title +
+        '</div><span style="display:flex;align-items:center;gap:8px">' +
+        '<span class="badge' + (items.length ? "" : " zero") + '">' + items.length + '</span>' +
+        '<span class="chev">▶</span></span></div>' +
+        '<div class="body"></div>';
+      var body = $(".body", card);
+      if (!items.length) body.innerHTML = '<div class="empty">Sin registros todavía.</div>';
+      items.forEach(function (item, idx) {
+        var s = entrySummary(sec.key, item);
+        var e = document.createElement("div");
+        e.className = "entry";
+        e.innerHTML = '<div class="ttl">' + escapeHtml(s.ttl) + '</div>' +
+          (s.meta ? '<div class="meta">' + escapeHtml(s.meta) + '</div>' : '') +
+          '<div class="acts"><button class="btn sm ghost" data-edit>Editar</button></div>';
+        $("[data-edit]", e).addEventListener("click", function () { openEditor(sec.key, idx); });
+        body.appendChild(e);
+      });
+      var add = document.createElement("button");
+      add.className = "btn addbtn"; add.textContent = "＋ Añadir";
+      add.addEventListener("click", function () { openEditor(sec.key, -1); });
+      body.appendChild(add);
+      host.appendChild(card);
+    });
+    bindToggles();
+  }
+
+  function bindToggles() {
+    $$("[data-toggle]").forEach(function (h) {
+      h.onclick = function () { h.parentElement.classList.toggle("open"); };
+    });
+  }
+
+  function escapeHtml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  /* ---------- editor modal ---------- */
+  var editCtx = { sec: null, idx: -1 };
+  function openEditor(secKey, idx) {
+    var sec = SECMAP[secKey]; editCtx = { sec: secKey, idx: idx };
+    var item = idx >= 0 ? state.turno[secKey][idx] : {};
+    $("#mTitle").textContent = (idx >= 0 ? "Editar — " : "Añadir — ") + sec.title;
+    var form = $("#mForm"); form.innerHTML = "";
+    sec.fields.forEach(function (f) {
+      var wrap = document.createElement("div"); wrap.className = "fld";
+      if (f.type === "ident") {
+        var id = item.ident || {};
+        wrap.innerHTML = '<label class="f">' + f.label + '</label>' +
+          '<input type="text" data-f="ident.nombre" placeholder="Nombre y apellidos" value="' + attr(id.nombre) + '">' +
+          '<div class="row" style="margin-top:8px">' +
+          '<input class="edad" type="number" inputmode="numeric" data-f="ident.edad" placeholder="Edad" value="' + attr(id.edad) + '">' +
+          '<input class="ficha" type="text" inputmode="numeric" data-f="ident.ficha" placeholder="N° ficha" value="' + attr(id.ficha) + '">' +
+          '</div>';
+      } else if (f.type === "select") {
+        var opts = f.options.map(function (o) { return '<option' + (item[f.k] === o ? " selected" : "") + '>' + o + '</option>'; }).join("");
+        wrap.innerHTML = '<label class="f">' + f.label + '</label><select data-f="' + f.k + '"><option value=""></option>' + opts + '</select>';
+      } else if (f.type === "area") {
+        wrap.innerHTML = '<label class="f">' + f.label + '</label><textarea data-f="' + f.k + '">' + escapeHtml(item[f.k] || "") + '</textarea>';
+      } else {
+        var cls = f.type === "short" ? " class='short'" : "";
+        wrap.innerHTML = '<label class="f">' + f.label + '</label><input type="text"' + cls + ' data-f="' + f.k + '" value="' + attr(item[f.k]) + '">';
+      }
+      form.appendChild(wrap);
+    });
+    $("#mDelete").style.display = idx >= 0 ? "" : "none";
+    $("#modal").classList.add("show");
+  }
+  function attr(v) { return String(v == null ? "" : v).replace(/"/g, "&quot;"); }
+  function closeModal() { $("#modal").classList.remove("show"); }
+
+  $("#mCancel").addEventListener("click", closeModal);
+  $("#mSave").addEventListener("click", function () {
+    var obj = {};
+    $$("#mForm [data-f]").forEach(function (el) {
+      var key = el.getAttribute("data-f"), val = el.value.trim();
+      if (key.indexOf("ident.") === 0) { obj.ident = obj.ident || {}; obj.ident[key.split(".")[1]] = val; }
+      else obj[key] = val;
+    });
+    var arr = state.turno[editCtx.sec];
+    if (editCtx.idx >= 0) arr[editCtx.idx] = obj; else arr.push(obj);
+    closeModal(); renderSummary(); renderSections(); saveSoon();
+  });
+  $("#mDelete").addEventListener("click", function () {
+    if (editCtx.idx >= 0) { state.turno[editCtx.sec].splice(editCtx.idx, 1); }
+    closeModal(); renderSummary(); renderSections(); saveSoon();
+  });
+
+  /* ---------- meta inputs ---------- */
+  function bindMeta() {
+    $("#mFecha").value = state.turno.meta.fecha || todayISO();
+    $("#mStaff").value = (state.turno.meta.staff || []).join(" / ");
+    $("#mInternos").value = (state.turno.meta.internos || []).join(" / ");
+    $("#mConsultas").value = state.turno.urgencia.consultas || "";
+    $("#mFecha").oninput = function () { state.turno.meta.fecha = this.value; saveSoon(); };
+    $("#mStaff").oninput = function () { state.turno.meta.staff = splitList(this.value); saveSoon(); updateSub(); };
+    $("#mInternos").oninput = function () { state.turno.meta.internos = splitList(this.value); saveSoon(); };
+    $("#mConsultas").oninput = function () { state.turno.urgencia.consultas = this.value; renderSummary(); saveSoon(); };
+  }
+  function splitList(s) { return s.split("/").map(function (x) { return x.trim(); }).filter(Boolean); }
+  function updateSub() { var st = (state.turno.meta.staff || []).join(" / "); $("#subHdr").textContent = st ? st + " — " + isoToDMY(state.turno.meta.fecha) : "Servicio OBGIN — HRA"; }
+
+  /* ---------- generación del .docx ---------- */
+  function buildBlob() {
+    var opts = {};
+    if (state.signature) {
+      opts.signature = { bytes: state.signature.data, w: state.signature.w, h: state.signature.h };
+    }
+    var bytes = DocxCore.buildDocx(state.turno, opts);
+    return new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  }
+  function fileName() {
+    var f = state.turno.meta.fecha || todayISO();
+    return "Entrega de Turno " + f + ".docx";
+  }
+  function downloadDocx() {
+    var blob = buildBlob(), url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = fileName(); document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1500);
+  }
+  function shareDocx() {
+    var blob = buildBlob();
+    var file = new File([blob], fileName(), { type: blob.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: fileName(),
+        text: "Entrega de Turno — " + isoToDMY(state.turno.meta.fecha) })
+        .catch(function () { /* usuario canceló */ });
+    } else {
+      alert("Tu iPhone no permite compartir archivos desde el navegador aquí. Uso la descarga: guarda el Word y adjúntalo en Mail.");
+      downloadDocx();
+    }
+  }
+
+  /* ---------- cerrar turno (archivar + nuevo arrastrando pendientes) ---------- */
+  function cerrarTurno() {
+    var c = counts();
+    var ok = confirm("¿Cerrar y archivar este turno?\n\nSe guarda en el historial y se abre un turno nuevo arrastrando los pacientes que siguen en Preparto / Observación / Otras unidades / Ingresos (para que solo actualices su condición).");
+    if (!ok) return;
+    var snapshot = JSON.parse(JSON.stringify(state.turno));
+    state.history.unshift({ id: Date.now(), fecha: snapshot.meta.fecha, savedAt: new Date().toISOString(),
+      resumen: c.nac + " nac · " + c.interv + " interv · " + c.consultas + " consultas", turno: snapshot });
+    if (state.history.length > 120) state.history.pop();
+    kvSet("history", state.history);
+    // nuevo turno arrastrando pendientes
+    var nuevo = emptyTurno();
+    nuevo.meta.staff = snapshot.meta.staff.slice();
+    nuevo.meta.internos = [];
+    CARRY.forEach(function (k) { nuevo[k] = JSON.parse(JSON.stringify(snapshot[k] || [])); });
+    state.turno = nuevo; kvSet("current", state.turno);
+    refreshAll();
+    alert("Turno archivado. Nuevo turno listo con los pacientes que continúan.");
+  }
+
+  /* ---------- firma (canvas) ---------- */
+  var sigCtx = null, drawing = false, sigDirty = false;
+  function initSigPad() {
+    var cv = $("#sigPad"); var dpr = window.devicePixelRatio || 1;
+    var rect = cv.getBoundingClientRect();
+    cv.width = Math.max(300, rect.width) * dpr; cv.height = 200 * dpr;
+    sigCtx = cv.getContext("2d"); sigCtx.scale(dpr, dpr);
+    sigCtx.lineWidth = 2.5; sigCtx.lineCap = "round"; sigCtx.lineJoin = "round"; sigCtx.strokeStyle = "#14284a";
+    if (state.signature && state.signature.data) {
+      var img = new Image(); img.onload = function () { sigCtx.drawImage(img, 0, 0, rect.width, 200); }; img.src = state.signature.data;
+      $("#sigStatus").textContent = "Firma guardada. Puedes redibujarla.";
+    }
+    function pos(e) { var r = cv.getBoundingClientRect(); var p = e.touches ? e.touches[0] : e; return { x: p.clientX - r.left, y: p.clientY - r.top }; }
+    function start(e) { e.preventDefault(); drawing = true; sigDirty = true; var p = pos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }
+    function move(e) { if (!drawing) return; e.preventDefault(); var p = pos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); }
+    function end() { drawing = false; }
+    cv.onmousedown = start; cv.onmousemove = move; window.addEventListener("mouseup", end);
+    cv.ontouchstart = start; cv.ontouchmove = move; cv.ontouchend = end;
+  }
+  $("#sigClear").addEventListener("click", function () {
+    var cv = $("#sigPad"); sigCtx.clearRect(0, 0, cv.width, cv.height); sigDirty = true; $("#sigStatus").textContent = "";
+  });
+  $("#sigSave").addEventListener("click", function () {
+    var cv = $("#sigPad");
+    var data = cv.toDataURL("image/png");
+    state.signature = { data: data, w: cv.width, h: cv.height };
+    kvSet("signature", state.signature);
+    $("#sigStatus").textContent = "✓ Firma guardada.";
+  });
+
+  /* ---------- historial ---------- */
+  function renderHistory() {
+    var host = $("#histList");
+    if (!state.history.length) { host.innerHTML = '<div class="empty">Aún no hay turnos archivados.</div>'; return; }
+    host.innerHTML = "";
+    state.history.forEach(function (h) {
+      var row = document.createElement("div"); row.className = "hist-item";
+      row.innerHTML = '<div><div class="d">' + isoToDMY(h.fecha) + '</div><div class="s">' + escapeHtml(h.resumen || "") + '</div></div>';
+      var actions = document.createElement("div"); actions.style.display = "flex"; actions.style.gap = "6px";
+      var g = document.createElement("button"); g.className = "btn sm pri"; g.textContent = "Word";
+      g.onclick = function () { var prev = state.turno; state.turno = h.turno; var b = buildBlob(); state.turno = prev;
+        var url = URL.createObjectURL(b), a = document.createElement("a"); a.href = url; a.download = "Entrega de Turno " + h.fecha + ".docx"; a.click();
+        setTimeout(function(){URL.revokeObjectURL(url);},1500); };
+      actions.appendChild(g);
+      row.appendChild(actions);
+      host.appendChild(row);
+    });
+  }
+
+  /* ---------- navegación ---------- */
+  function show(scr) {
+    $$(".screen").forEach(function (s) { s.classList.remove("active"); });
+    $(scr).classList.add("active");
+    $("#actionbar").style.display = (scr === "#scrMain") ? "flex" : "none";
+    window.scrollTo(0, 0);
+  }
+  $("#btnFirma").addEventListener("click", function () { show("#scrFirma"); initSigPad(); });
+  $("#sigBack").addEventListener("click", function () { show("#scrMain"); });
+  $("#btnHist").addEventListener("click", function () { renderHistory(); show("#scrHist"); });
+  $("#histBack").addEventListener("click", function () { show("#scrMain"); });
+  $("#btnDescargar").addEventListener("click", downloadDocx);
+  $("#btnEnviar").addEventListener("click", shareDocx);
+  $("#btnCerrar").addEventListener("click", cerrarTurno);
+
+  function refreshAll() { bindMeta(); updateSub(); renderSummary(); renderSections(); }
+
+  /* ---------- arranque ---------- */
+  (async function init() {
+    var ok = await openDB();
+    if (!ok) { storageOK = false; }
+    if (storageOK) {
+      var cur = await kvGet("current"); if (cur) state.turno = normalize(cur);
+      var sig = await kvGet("signature"); if (sig) state.signature = sig;
+      var his = await kvGet("history"); if (his) state.history = his;
+    }
+    if (!storageOK) $("#storeBanner").style.display = "block";
+    refreshAll();
+    bindToggles();
+  })();
+
+  function normalize(t) { var base = emptyTurno();
+    base.meta = Object.assign(base.meta, t.meta || {});
+    base.urgencia = Object.assign(base.urgencia, t.urgencia || {});
+    SECTIONS.forEach(function (s) { if (Array.isArray(t[s.key])) base[s.key] = t[s.key]; });
+    return base; }
+})();
+</script>
+</body></html>
