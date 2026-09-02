@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control Post Alta Ley Dominga — HRA | Prototipo paralelo</title>
+<style>
+:root{
+  --bg:#f5f7fa; --card:#ffffff; --ink:#17202a; --muted:#667085;
+  --line:#dfe4ea; --accent:#253858; --soft:#edf2f7; --warn:#a15c00;
+  --danger:#a61b1b; --ok:#176b45;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.wrap{max-width:980px;margin:28px auto;padding:0 16px 50px}
+h1{font-size:26px;margin:0 0 6px}
+.sub{color:var(--muted);margin-bottom:18px}
+.banner{border:1px solid var(--line);background:var(--card);padding:13px 15px;border-radius:10px;margin:12px 0}
+.banner strong{display:block;margin-bottom:3px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin:14px 0}
+.card h2{font-size:18px;margin:0 0 14px}
+.card h3{font-size:15px;margin:16px 0 8px}
+label{display:block;font-weight:600;margin:0 0 5px}
+small,.hint{color:var(--muted);font-weight:400}
+input[type=date],input[type=number],select,textarea{
+  width:100%;border:1px solid #cfd6df;border-radius:8px;padding:10px;background:white;color:var(--ink);font:inherit
+}
+textarea{min-height:72px;resize:vertical}
+.row{margin-bottom:12px}
+.checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 16px}
+.check{display:flex;gap:8px;align-items:flex-start;font-weight:400}
+.check input{margin-top:4px}
+.inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pill{padding:6px 10px;border-radius:999px;background:var(--soft);font-weight:700;font-size:13px}
+.pill.ok{background:#e8f5ee;color:var(--ok)}
+.pill.warn{background:#fff3df;color:var(--warn)}
+.pill.danger{background:#fde8e8;color:var(--danger)}
+.branch{border-left:4px solid #cfd6df;padding:12px 14px;background:#fafbfc;border-radius:8px;margin-top:12px}
+.alert{display:none;border:1px solid #efc3c3;background:#fff3f3;color:#7c1111;padding:10px 12px;border-radius:8px;margin-top:10px;font-weight:650}
+.output{white-space:pre-wrap;background:#0f172a;color:#f8fafc;border-radius:10px;padding:16px;min-height:130px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+button{border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}
+.primary{background:var(--accent);color:white}
+.secondary{background:#e9edf3;color:var(--ink)}
+.footer{color:var(--muted);font-size:12px;margin-top:20px}
+.req:after{content:" *";color:var(--danger)}
+.ficha-panel{background:#fff4f4;border:2px solid var(--danger);border-radius:12px;padding:16px;margin:0 0 14px;text-align:center}
+.ficha-panel label{color:var(--danger);font-size:14px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px}
+.ficha-panel input{
+  display:block;
+  width:100%;
+  max-width:420px;
+  margin:0 auto;
+  border:2px solid var(--danger);
+  font-size:28px;
+  font-weight:800;
+  text-align:center;
+  color:var(--danger);
+  background:#fff;
+}
+.ficha-big{font-size:34px;font-weight:900;color:var(--danger);margin-top:10px;letter-spacing:.03em;word-break:break-word}
+@media(max-width:720px){.grid,.grid3,.checks{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Control Post Alta Ley Dominga</h1>
+  <div class="sub">Prototipo paralelo · genera una nota clínica concisa para copiar a la ficha hospitalaria · no almacena datos</div>
+  <p style="margin:0 0 16px"><a href="EntregaDeTurno.html" style="color:#253858;font-weight:600;text-decoration:none">← Volver a Entrega de Turno</a></p>
+
+  <div class="banner">
+    <strong>Privacidad por diseño</strong>
+    Ingrese únicamente el número de ficha clínica como identificador operativo. No ingrese nombre, RUT, teléfono ni otros datos personales. Esta herramienta funciona localmente en el navegador y no guarda información.
+  </div>
+
+  <div class="card">
+    <h2>1. Episodio y oportunidad del control</h2>
+    <div class="ficha-panel">
+      <label class="req" for="ficha">Número de ficha clínica</label>
+      <input id="ficha" type="text" inputmode="numeric" autocomplete="off" placeholder="Ingrese N.º de ficha">
+      <div id="fichaBig" class="ficha-big">—</div>
+      <small>Visible sólo para gestión de la atención. No se incorpora a la nota evolutiva generada.</small>
+    </div>
+    <div class="grid">
+      <div class="row"><label class="req">Fecha de egreso</label><input id="egreso" type="date"></div>
+      <div class="row"><label class="req">Fecha del control</label><input id="control" type="date"></div>
+    </div>
+    <div class="inline"><span id="plazo" class="pill">Ingrese fechas</span></div>
+    <div id="plazoAlert" class="alert">Control posterior a 15 días desde el egreso. Registrar causa/antecedente institucional y asegurar evaluación sin nueva postergación.</div>
+
+    <div class="grid3" style="margin-top:14px">
+      <div class="row"><label>EG semanas</label><input id="egw" type="number" min="0" max="45" placeholder="Ej. 9"></div>
+      <div class="row"><label>EG días</label><input id="egd" type="number" min="0" max="6" placeholder="Ej. 4"></div>
+      <div class="row"><label class="req">Diagnóstico índice</label>
+        <select id="dx">
+          <option value="">Seleccione…</option>
+          <option>Aborto completo</option>
+          <option>Aborto incompleto</option>
+          <option>Aborto inevitable</option>
+          <option>Aborto retenido</option>
+          <option>Embarazo anembrionado</option>
+          <option>Embarazo ectópico inviable</option>
+          <option>Enfermedad trofoblástica gestacional</option>
+          <option>Muerte fetal intrauterina / óbito fetal</option>
+          <option>Muerte perinatal / neonatal</option>
+          <option>Otro escenario comprendido en Ley Dominga</option>
+        </select>
+      </div>
+    </div>
+
+    <h3>Manejo del episodio índice</h3>
+    <div class="checks" id="manejoChecks">
+      <label class="check"><input type="checkbox" value="manejo expectante">Expectante</label>
+      <label class="check"><input type="checkbox" value="manejo farmacológico">Farmacológico</label>
+      <label class="check"><input type="checkbox" value="AMEU">AMEU</label>
+      <label class="check"><input type="checkbox" value="legrado uterino">Legrado</label>
+      <label class="check"><input type="checkbox" value="cirugía laparoscópica">Cirugía laparoscópica</label>
+      <label class="check"><input type="checkbox" value="laparotomía">Laparotomía</label>
+      <label class="check"><input type="checkbox" value="inducción/parto">Inducción/parto</label>
+      <label class="check"><input type="checkbox" value="cesárea">Cesárea</label>
+    </div>
+    <div class="row" style="margin-top:10px"><label>Otro / precisión útil</label><input id="manejoOtro" type="text" placeholder="Sólo si aporta al seguimiento"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Evolución clínica postalta</h2>
+    <div class="checks" id="symChecks">
+      <label class="check"><input type="checkbox" value="sangrado persistente/aumentado">Sangrado persistente/aumentado</label>
+      <label class="check"><input type="checkbox" value="dolor pélvico persistente/aumentado">Dolor persistente/aumentado</label>
+      <label class="check"><input type="checkbox" value="fiebre o escalofríos">Fiebre/escalofríos</label>
+      <label class="check"><input type="checkbox" value="flujo vaginal anormal o maloliente">Flujo anormal/mal olor</label>
+      <label class="check"><input type="checkbox" value="mareos, síncope o compromiso general">Mareos/síncope/compromiso general</label>
+      <label class="check"><input type="checkbox" value="otros síntomas relevantes">Otros síntomas relevantes</label>
+    </div>
+    <div class="row" style="margin-top:10px"><label>Si corresponde, precisar síntoma</label><input id="symOtro" type="text"></div>
+
+    <div class="grid">
+      <div class="row"><label class="req">Estado clínico actual</label>
+        <select id="estado">
+          <option value="">Seleccione…</option>
+          <option value="Clínicamente estable">Clínicamente estable</option>
+          <option value="Requiere evaluación/intervención adicional">Requiere evaluación/intervención adicional</option>
+          <option value="Requiere atención inmediata">Requiere atención inmediata</option>
+        </select>
+      </div>
+      <div class="row"><label class="req">Signos de alarma en esta evaluación</label>
+        <select id="alarma">
+          <option value="">Seleccione…</option>
+          <option value="No">No</option>
+          <option value="Sí">Sí</option>
+        </select>
+      </div>
+    </div>
+    <div id="urgentAlert" class="alert">Se seleccionaron signos de alarma o necesidad de atención inmediata. La herramienta no sustituye la conducta clínica: priorice evaluación y manejo correspondiente.</div>
+
+    <div class="row"><label>Examen / hallazgos relevantes</label>
+      <select id="examenTipo">
+        <option value="Sin hallazgos relevantes consignables">Sin hallazgos relevantes consignables</option>
+        <option value="Examen ginecológico no indicado en este control">Examen ginecológico no indicado en este control</option>
+        <option value="Hallazgos relevantes">Hallazgos relevantes</option>
+      </select>
+    </div>
+    <div class="row"><input id="examenDet" type="text" placeholder="Precisar sólo si hay hallazgos relevantes"></div>
+  </div>
+
+  <div class="card">
+    <h2>3. Resolución del episodio — rama inteligente</h2>
+    <div id="branchDefault" class="branch">Seleccione el diagnóstico índice para mostrar el mínimo seguimiento específico.</div>
+
+    <div id="branchAborto" class="branch" style="display:none">
+      <label class="req">Resolución del cuadro</label>
+      <select id="resAborto">
+        <option value="">Seleccione…</option>
+        <option>Compatible con resolución clínica</option>
+        <option>Resolución no confirmada / dudosa</option>
+        <option>Persistencia o complicación en estudio</option>
+      </select>
+      <div class="row" style="margin-top:10px"><label>Estudio/acción adicional si corresponde</label><input id="resAbortoDet" type="text" placeholder="Ecografía, laboratorio, nueva reevaluación, etc."></div>
+    </div>
+
+    <div id="branchEctopico" class="branch" style="display:none">
+      <div class="grid">
+        <div class="row"><label class="req">Seguimiento específico</label>
+          <select id="resEct">
+            <option value="">Seleccione…</option>
+            <option>Completado según conducta adoptada</option>
+            <option>En curso</option>
+            <option>Pendiente / incompleto</option>
+          </select>
+        </div>
+        <div class="row"><label>β-hCG / otro seguimiento</label><input id="ectDet" type="text" placeholder="Resultado, tendencia o plan"></div>
+      </div>
+    </div>
+
+    <div id="branchTrof" class="branch" style="display:none">
+      <div class="grid">
+        <div class="row"><label class="req">Anatomía patológica</label>
+          <select id="apTrof"><option value="">Seleccione…</option><option>Revisada</option><option>Pendiente</option><option>No disponible</option></select>
+        </div>
+        <div class="row"><label class="req">Seguimiento β-hCG</label>
+          <select id="hcgTrof"><option value="">Seleccione…</option><option>Indicado/en curso</option><option>Completado</option><option>Pendiente de organizar</option></select>
+        </div>
+      </div>
+    </div>
+
+    <div id="branchFetal" class="branch" style="display:none">
+      <div class="grid">
+        <div class="row"><label class="req">Evolución puerperal/obstétrica</label>
+          <select id="puer"><option value="">Seleccione…</option><option>Sin complicaciones relevantes</option><option>Con hallazgos/complicaciones</option><option>No corresponde</option></select>
+        </div>
+        <div class="row"><label>Resultados etiológicos/AP/genéticos</label><input id="fetalDet" type="text" placeholder="Disponibles, pendientes o no indicados"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>4. Componente emocional y red de apoyo</h2>
+    <div class="grid">
+      <div class="row"><label class="req">Malestar emocional actual</label>
+        <select id="emocion">
+          <option value="">Seleccione…</option>
+          <option>Sin elementos de alarma pesquisados en este control</option>
+          <option>Malestar significativo; requiere apoyo/derivación</option>
+          <option>Ya se encuentra en seguimiento de salud mental/psicosocial</option>
+        </select>
+      </div>
+      <div class="row"><label class="req">Red de apoyo referida</label>
+        <select id="red"><option value="">Seleccione…</option><option>Presente</option><option>Limitada/ausente</option><option>No explorada</option></select>
+      </div>
+    </div>
+    <div class="row"><label class="req">Ideas actuales de autolesión o muerte</label>
+      <select id="autolesion"><option value="">Seleccione…</option><option value="No">No refiere</option><option value="Sí">Sí refiere</option></select>
+    </div>
+    <div id="selfHarmAlert" class="alert">Riesgo potencial pesquisado. Requiere evaluación clínica inmediata y activación de la ruta institucional correspondiente; no basta una derivación diferida.</div>
+  </div>
+
+  <div class="card">
+    <h2>5. Continuidad multidisciplinaria y salud sexual/reproductiva</h2>
+    <div class="grid">
+      <div class="row"><label class="req">Componente psicosocial</label>
+        <select id="psico"><option value="">Seleccione…</option><option>Realizado</option><option>Agendado</option><option>Pendiente de gestión</option><option>Paciente declina seguimiento</option></select>
+      </div>
+      <div class="row"><label class="req">Matronería / SSR</label>
+        <select id="matrona"><option value="">Seleccione…</option><option>Realizado</option><option>Agendado</option><option>Pendiente de gestión</option><option>Paciente declina seguimiento</option></select>
+      </div>
+    </div>
+    <div class="row"><label>Salud sexual y reproductiva</label>
+      <select id="ssr"><option value="">Seleccione…</option><option>Abordada; sin necesidad adicional identificada</option><option>Consejería anticonceptiva requerida/realizada</option><option>Atención preconcepcional requerida</option><option>Derivación/seguimiento específico requerido</option></select>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>6. Plan y cierre</h2>
+    <div class="checks" id="planChecks">
+      <label class="check"><input type="checkbox" value="episodio clínicamente resuelto">Episodio clínicamente resuelto</label>
+      <label class="check"><input type="checkbox" value="nuevo control">Nuevo control</label>
+      <label class="check"><input type="checkbox" value="exámenes/estudio adicional">Exámenes/estudio adicional</label>
+      <label class="check"><input type="checkbox" value="derivación a otra especialidad/equipo">Derivación</label>
+      <label class="check"><input type="checkbox" value="manejo inmediato">Manejo inmediato</label>
+    </div>
+    <div class="row" style="margin-top:10px"><label>Plan específico, sólo si agrega información</label><input id="planDet" type="text"></div>
+    <div class="checks" style="margin-top:12px">
+      <label class="check"><input id="alarmInfo" type="checkbox">Se entregan/refuerzan signos de alarma e indicaciones de reconsulta.</label>
+      <label class="check"><input id="understood" type="checkbox">Paciente manifiesta comprensión del plan.</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Nota clínica generada</h2>
+    <div id="validation" class="alert">Faltan campos mínimos obligatorios.</div>
+    <div id="output" class="output">Complete el cuestionario y presione “Generar nota”.</div>
+    <div class="actions">
+      <button class="primary" onclick="generateNote()">Generar nota</button>
+      <button class="secondary" onclick="copyNote()">Copiar nota</button>
+      <button class="secondary" onclick="resetForm()">Limpiar</button>
+    </div>
+  </div>
+
+  <div class="footer">
+    Herramienta de apoyo clínico-documental. El número de ficha clínica se utiliza sólo como referencia operativa en pantalla y no se incorpora a la nota generada. No sustituye juicio clínico, protocolos locales ni la responsabilidad del equipo tratante.
+    Base normativa de diseño: Ley N.º 21.371 y Norma General Técnica y Administrativa N.º 221 (MINSAL).
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const checkedVals = box => [...document.querySelectorAll('#'+box+' input[type=checkbox]:checked')].map(x=>x.value);
+
+function daysBetween(a,b){
+  if(!a||!b) return null;
+  const d1 = new Date(a+'T12:00:00'), d2 = new Date(b+'T12:00:00');
+  return Math.round((d2-d1)/86400000);
+}
+function updatePlazo(){
+  const n=daysBetween($('egreso').value,$('control').value);
+  const p=$('plazo'), a=$('plazoAlert');
+  p.className='pill'; a.style.display='none';
+  if(n===null){p.textContent='Ingrese fechas'; return;}
+  p.textContent=`Día ${n} post egreso`;
+  if(n<0){p.classList.add('danger');p.textContent='Fecha de control anterior al egreso';}
+  else if(n<=15){p.classList.add('ok');}
+  else {p.classList.add('danger');a.style.display='block';}
+}
+
+$('ficha').addEventListener('input',()=>{
+  const v=$('ficha').value.trim();
+  $('fichaBig').textContent=v || '—';
+});
+
+$('egreso').addEventListener('change',updatePlazo);
+$('control').addEventListener('change',updatePlazo);
+
+function updateUrgency(){
+  const danger=$('alarma').value==='Sí'||$('estado').value==='Requiere atención inmediata';
+  $('urgentAlert').style.display=danger?'block':'none';
+}
+$('alarma').addEventListener('change',updateUrgency);
+$('estado').addEventListener('change',updateUrgency);
+
+$('autolesion').addEventListener('change',()=>{
+  $('selfHarmAlert').style.display=$('autolesion').value==='Sí'?'block':'none';
+});
+
+const dxGroups = {
+  aborto:['Aborto completo','Aborto incompleto','Aborto inevitable','Aborto retenido','Embarazo anembrionado'],
+  ect:['Embarazo ectópico inviable'],
+  trof:['Enfermedad trofoblástica gestacional'],
+  fetal:['Muerte fetal intrauterina / óbito fetal','Muerte perinatal / neonatal']
+};
+function updateBranch(){
+  ['branchAborto','branchEctopico','branchTrof','branchFetal'].forEach(x=>$(x).style.display='none');
+  $('branchDefault').style.display='none';
+  const d=$('dx').value;
+  if(dxGroups.aborto.includes(d)) $('branchAborto').style.display='block';
+  else if(dxGroups.ect.includes(d)) $('branchEctopico').style.display='block';
+  else if(dxGroups.trof.includes(d)) $('branchTrof').style.display='block';
+  else if(dxGroups.fetal.includes(d)) $('branchFetal').style.display='block';
+  else $('branchDefault').style.display='block';
+}
+$('dx').addEventListener('change',updateBranch);
+
+function listPhrase(arr, fallback=''){
+  if(!arr.length) return fallback;
+  if(arr.length===1) return arr[0];
+  return arr.slice(0,-1).join(', ')+' y '+arr[arr.length-1];
+}
+function requiredMissing(){
+  const ids=['ficha','egreso','control','dx','estado','alarma','emocion','red','autolesion','psico','matrona'];
+  if(ids.some(id=>!$(id).value)) return true;
+  const d=$('dx').value;
+  if(dxGroups.aborto.includes(d) && !$('resAborto').value) return true;
+  if(dxGroups.ect.includes(d) && !$('resEct').value) return true;
+  if(dxGroups.trof.includes(d) && (!$('apTrof').value||!$('hcgTrof').value)) return true;
+  if(dxGroups.fetal.includes(d) && !$('puer').value) return true;
+  return false;
+}
+function generateNote(){
+  if(requiredMissing()){
+    $('validation').style.display='block';
+    $('output').textContent='Complete los campos marcados con * antes de generar la nota.';
+    return;
+  }
+  $('validation').style.display='none';
+  const n=daysBetween($('egreso').value,$('control').value);
+  const eg = $('egw').value ? `${$('egw').value}${$('egd').value!==''?'+'+$('egd').value:''} sem` : '';
+  const manejo = checkedVals('manejoChecks');
+  if($('manejoOtro').value.trim()) manejo.push($('manejoOtro').value.trim());
+
+  const sx=checkedVals('symChecks');
+  let evol = sx.length ? `Síntomas postalta: ${listPhrase(sx)}${$('symOtro').value.trim()?` (${ $('symOtro').value.trim() })`:''}.` : 'Sin síntomas de alarma referidos en anamnesis dirigida.';
+  let exam = $('examenTipo').value;
+  if($('examenTipo').value==='Hallazgos relevantes' && $('examenDet').value.trim()) exam += `: ${$('examenDet').value.trim()}`;
+
+  let specific='';
+  const d=$('dx').value;
+  if(dxGroups.aborto.includes(d)){
+    specific=`Resolución: ${$('resAborto').value}.`;
+    if($('resAbortoDet').value.trim()) specific+=` ${$('resAbortoDet').value.trim()}.`;
+  } else if(dxGroups.ect.includes(d)){
+    specific=`Seguimiento de ectópico: ${$('resEct').value}.`;
+    if($('ectDet').value.trim()) specific+=` ${$('ectDet').value.trim()}.`;
+  } else if(dxGroups.trof.includes(d)){
+    specific=`ETG: anatomía patológica ${$('apTrof').value.toLowerCase()}; seguimiento β-hCG ${$('hcgTrof').value.toLowerCase()}.`;
+  } else if(dxGroups.fetal.includes(d)){
+    specific=`Evolución obstétrica/puerperal: ${$('puer').value.toLowerCase()}.`;
+    if($('fetalDet').value.trim()) specific+=` Resultados/estudio: ${$('fetalDet').value.trim()}.`;
+  }
+
+  const psych=`Evaluación emocional: ${$('emocion').value.toLowerCase()}; red de apoyo ${$('red').value.toLowerCase()}; ${$('autolesion').value==='No'?'no refiere ideas actuales de autolesión o muerte':'refiere ideas actuales de autolesión o muerte'}.`;
+  const multi=`Continuidad: psicosocial ${$('psico').value.toLowerCase()}, matronería/SSR ${$('matrona').value.toLowerCase()}${$('ssr').value?`; ${$('ssr').value.toLowerCase()}`:''}.`;
+
+  const plan=checkedVals('planChecks');
+  let planText=plan.length?`Plan: ${listPhrase(plan)}.`:'';
+  if($('planDet').value.trim()) planText+=` ${$('planDet').value.trim()}.`;
+  if($('alarmInfo').checked) planText+=' Se refuerzan signos de alarma e indicaciones de reconsulta.';
+  if($('understood').checked) planText+=' Paciente manifiesta comprensión del plan.';
+
+  const deadline = n>15 ? ` Control realizado día ${n} post egreso (posterior al plazo de 15 días); dejar constancia de causa institucional si corresponde.` : ` Control día ${n} post egreso.`;
+  const idx = `Control postalta Ley N.º 21.371.${deadline} Episodio índice: ${d}${eg?', EG '+eg:''}${manejo.length?`, manejo: ${listPhrase(manejo)}`:''}.`;
+  const clinical=` ${$('estado').value}. ${evol} ${$('alarma').value==='No'?'Sin signos de alarma en esta evaluación.':'Con signos de alarma en esta evaluación.'} ${exam}.`;
+
+  $('output').textContent=[idx,clinical,specific,psych,multi,planText].filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+}
+async function copyNote(){
+  const text=$('output').textContent;
+  if(!text || text.startsWith('Complete')) return;
+  try{await navigator.clipboard.writeText(text); alert('Nota copiada.');}
+  catch(e){
+    const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); alert('Nota copiada.');
+  }
+}
+function resetForm(){
+  if(!confirm('¿Limpiar todos los campos?')) return;
+  document.querySelectorAll('input').forEach(el=>{if(el.type==='checkbox')el.checked=false; else el.value='';});
+  document.querySelectorAll('select').forEach(el=>el.selectedIndex=0);
+  $('output').textContent='Complete el cuestionario y presione “Generar nota”.';
+  $('validation').style.display='none'; $('plazoAlert').style.display='none'; $('urgentAlert').style.display='none'; $('selfHarmAlert').style.display='none';
+  $('fichaBig').textContent='—'; updatePlazo(); updateBranch();
+}
+updateBranch();
+</script>
+</body>
+</html>
