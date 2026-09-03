@@ -382,7 +382,10 @@
     if (typeof id === "string") return id;
     var s = (id.nombre || "").trim();
     if (id.edad != null && id.edad !== "") s += " (" + id.edad + "a)";
-    if (id.ficha) s += " " + id.ficha;
+    var nums = [];
+    if (id.ficha) nums.push("Ficha " + id.ficha);
+    if (id.dau) nums.push("DAU " + id.dau);
+    if (nums.length) s += " · " + nums.join(" · ");
     return s.trim();
   }
 
@@ -566,31 +569,34 @@
     // 6. Nacimientos (partos)
     if (nac.length) {
       body.push(sectionHeading("Nacimientos (partos atendidos)"));
-      var r6 = [headerRow(["Nombre", "Tipo de parto", "Información RN", "Comentarios"])];
+      var r6 = [headerRow(["Identificación (madre)", "Diagnóstico", "Tipo de parto", "Información RN", "Comentarios"])];
       renderRows(nac, function (x) {
+        var idm = (x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : "");
         r6.push([
-          { text: x.nombre || "", sz: 18, bold: true },
+          { text: idm, sz: 18, bold: true },
+          { text: x.diagnostico || "", sz: 18 },
           { text: x.tipoParto || "", sz: 18 },
           { text: x.infoRN || "", sz: 18 },
           { text: x.comentarios || "", sz: 18 }
         ]);
       });
-      body.push(table([2800, 1800, 3100, 3100], r6));
+      body.push(table([2600, 2400, 1500, 2300, 2000], r6));
     }
 
-    // 7. Peritajes médico-legales (NUEVO)
+    // 7. Peritajes médico-legales (mínimo)
     var pe = t.peritajes || [];
     if (pe.length) {
       body.push(sectionHeading("Peritajes Médico-Legales"));
-      var r7 = [headerRow(["Identificación", "Tipo de peritaje", "Hallazgos"])];
+      var r7 = [headerRow(["Nombre del paciente", "N° DAU", "Autorizada (Fiscalía)", "Realizada"])];
       renderRows(pe, function (x) {
         r7.push([
-          { text: fmtIdent(x.ident), sz: 18, bold: true },
-          { text: x.tipo || "", sz: 18 },
-          { text: x.hallazgos || "", sz: 18 }
+          { text: x.nombre || "", sz: 18, bold: true },
+          { text: x.dau || "", sz: 18 },
+          { text: x.autorizada ? "Sí" : "—", sz: 18 },
+          { text: x.realizada ? "Sí" : "—", sz: 18 }
         ]);
       });
-      body.push(table([3000, 2400, 5400], r7));
+      body.push(table([4200, 2400, 2400, 1800], r7));
     }
 
     // Firmas: Jefe de Turno Saliente | Jefe de Turno Entrante
@@ -804,12 +810,12 @@
       t.ingresos, function (x) { return [x.cama || "", fmtIdent(x.ident), x.diagnosticos || "", x.manejo || "", x.comentarios || ""]; }, true);
 
     section("VI. Nacimientos (partos atendidos)",
-      ["Identificación (madre)", "Tipo de parto", "Información del recién nacido", "Comentarios"],
-      nac, function (x) { return [x.nombre || "", x.tipoParto || "", x.infoRN || "", x.comentarios || ""]; }, true);
+      ["Identificación (madre)", "Diagnóstico", "Tipo de parto", "Información del recién nacido", "Comentarios"],
+      nac, function (x) { return [(x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.diagnostico || "", x.tipoParto || "", x.infoRN || "", x.comentarios || ""]; }, true);
 
     section("VII. Peritajes Médico-Legales",
-      ["Identificación del paciente", "Tipo de peritaje", "Hallazgos"],
-      t.peritajes, function (x) { return [fmtIdent(x.ident), x.tipo || "", x.hallazgos || ""]; }, true);
+      ["Nombre del paciente", "N° DAU", "Autorizada (Fiscalía)", "Realizada"],
+      t.peritajes, function (x) { return [x.nombre || "", x.dau || "", x.autorizada ? "Sí" : "—", x.realizada ? "Sí" : "—"]; }, true);
 
     // Pie de firmas (nombre + RUT; la firma-imagen va en el Word)
     blank();
@@ -926,12 +932,16 @@
                { k: "comentarios", label: "Comentarios", type: "area" }] },
     { key: "nacimientos", icon: "👶", title: "Nacimientos (partos atendidos)",
       fields: [{ k: "nombre", label: "Nombre de la madre", type: "text" },
+               { k: "ficha", label: "N° Ficha (madre)", type: "short" },
+               { k: "diagnostico", label: "Diagnóstico", type: "area" },
                { k: "tipoParto", label: "Tipo de parto", type: "select", options: ["Vaginal", "Cesárea", "Fórceps"] },
                { k: "infoRN", label: "Información RN", type: "area" },
                { k: "comentarios", label: "Comentarios", type: "area" }] },
     { key: "peritajes", icon: "⚖️", title: "Peritajes médico-legales",
-      fields: [IDENT, { k: "tipo", label: "Tipo de peritaje", type: "text" },
-               { k: "hallazgos", label: "Hallazgos", type: "area" }] }
+      fields: [{ k: "nombre", label: "Nombre del paciente", type: "text" },
+               { k: "dau", label: "N° DAU (Dato de Atención de Urgencia)", type: "text" },
+               { k: "autorizada", label: "Autorizada (por Fiscalía)", type: "check" },
+               { k: "realizada", label: "Realizada", type: "check" }] }
   ];
   var SECMAP = {}; SECTIONS.forEach(function (s) { SECMAP[s.key] = s; });
   // secciones que se "arrastran" al siguiente turno (pacientes que continúan)
@@ -1004,7 +1014,13 @@
   function identSummary(id) { return (window.DocxCore ? DocxCore.fmtIdent(id) : (id && id.nombre) || ""); }
 
   function entrySummary(secKey, item) {
-    if (secKey === "nacimientos") return { ttl: item.nombre || "(sin nombre)", meta: [item.tipoParto, item.infoRN].filter(Boolean).join(" · ") };
+    if (secKey === "nacimientos") return { ttl: item.nombre || "(sin nombre)", meta: [item.tipoParto, item.diagnostico].filter(Boolean).join(" · ") };
+    if (secKey === "peritajes") {
+      var est = [];
+      if (item.autorizada) est.push("Autorizada");
+      if (item.realizada) est.push("Realizada");
+      return { ttl: item.nombre || "(sin nombre)", meta: [(item.dau ? "DAU " + item.dau : ""), est.join(" · ")].filter(Boolean).join(" · ") };
+    }
     var ttl = identSummary(item.ident) || "(sin identificación)";
     var prefix = item.sala ? "Sala " + item.sala + " · " : (item.n ? "N° " + item.n + " · " : (item.cama ? item.cama + " · " : ""));
     var meta = (prefix + (item.diagnostico || item.diagnosticos || item.tipo || "")).trim();
@@ -1067,13 +1083,17 @@
           '<input type="text" data-f="ident.nombre" placeholder="Nombre y apellidos" value="' + attr(id.nombre) + '">' +
           '<div class="row" style="margin-top:8px">' +
           '<input class="edad" type="number" inputmode="numeric" data-f="ident.edad" placeholder="Edad" value="' + attr(id.edad) + '">' +
-          '<input class="ficha" type="text" inputmode="numeric" data-f="ident.ficha" placeholder="N° ficha" value="' + attr(id.ficha) + '">' +
+          '<input type="text" inputmode="numeric" data-f="ident.ficha" placeholder="N° ficha" value="' + attr(id.ficha) + '">' +
+          '<input type="text" inputmode="numeric" data-f="ident.dau" placeholder="N° DAU" value="' + attr(id.dau) + '">' +
           '</div>';
       } else if (f.type === "select") {
         var opts = f.options.map(function (o) { return '<option' + (item[f.k] === o ? " selected" : "") + '>' + o + '</option>'; }).join("");
         wrap.innerHTML = '<label class="f">' + f.label + '</label><select data-f="' + f.k + '"><option value=""></option>' + opts + '</select>';
       } else if (f.type === "area") {
         wrap.innerHTML = '<label class="f">' + f.label + '</label><textarea data-f="' + f.k + '">' + escapeHtml(item[f.k] || "") + '</textarea>';
+      } else if (f.type === "check") {
+        wrap.innerHTML = '<label style="display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;color:var(--tinta)">' +
+          '<input type="checkbox" data-f="' + f.k + '" style="width:22px;height:22px"' + (item[f.k] ? " checked" : "") + '> ' + f.label + '</label>';
       } else {
         var cls = f.type === "short" ? " class='short'" : "";
         wrap.innerHTML = '<label class="f">' + f.label + '</label><input type="text"' + cls + ' data-f="' + f.k + '" value="' + attr(item[f.k]) + '">';
@@ -1090,7 +1110,8 @@
   $("#mSave").addEventListener("click", function () {
     var obj = {};
     $$("#mForm [data-f]").forEach(function (el) {
-      var key = el.getAttribute("data-f"), val = el.value.trim();
+      var key = el.getAttribute("data-f");
+      var val = (el.type === "checkbox") ? el.checked : el.value.trim();
       if (key.indexOf("ident.") === 0) { obj.ident = obj.ident || {}; obj.ident[key.split(".")[1]] = val; }
       else obj[key] = val;
     });
