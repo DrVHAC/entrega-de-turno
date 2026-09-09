@@ -500,10 +500,10 @@
     (t.peritajes||[]).forEach(function(x){ var e=[]; if(x.autorizada)e.push("autorizada"); if(x.realizada)e.push("realizada");
       novedades.push("Peritaje médico-legal: "+(x.nombre||"")+(x.dau?" (DAU "+x.dau+")":"")+(e.length?" — "+e.join(", "):"")); });
     var pend=[];
-    pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||""}); });
-    obs.forEach(function(x){ pend.push({ubic:"Observación"+(x.n?" "+x.n:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||""}); });
-    otras.forEach(function(x){ pend.push({ubic:(x.cama||"Otra unidad"), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||""}); });
-    ing.forEach(function(x){ pend.push({ubic:"Ingreso"+(x.cama?" "+x.cama:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.manejo||""}); });
+    pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
+    obs.forEach(function(x){ pend.push({ubic:"Observación"+(x.n?" "+x.n:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
+    otras.forEach(function(x){ pend.push({ubic:(x.servicio?x.servicio+" ":"")+(x.cama||"Otra unidad"), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
+    ing.forEach(function(x){ pend.push({ubic:"Ingreso"+(x.cama?" "+x.cama:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:"", manejo:x.manejo||""}); });
     return { fecha:meta.fecha||"", staff:staff,
       saliente: meta.nombreSaliente || staff, rutSaliente: meta.rutSaliente||"",
       entrante: meta.entrante||"", rutEntrante: meta.rutEntrante||"",
@@ -555,9 +555,9 @@
 
     body.push(sectionHeading("Pendientes para el turno entrante"));
     if(m.pendientes.length){
-      var rows=[headerRow(["Ubicación","Paciente","Diagnóstico","Condición"])];
-      m.pendientes.forEach(function(p){ rows.push([{text:p.ubic,sz:16},{text:p.ident,sz:16,bold:true},{text:p.dx,sz:16},{text:p.cond,sz:16}]); });
-      body.push(table([1700,2900,3100,3100],rows));
+      var rows=[headerRow(["Ubicación","Paciente","Diagnóstico","Condición","Manejo"])];
+      m.pendientes.forEach(function(p){ rows.push([{text:p.ubic,sz:16},{text:p.ident,sz:16,bold:true},{text:p.dx,sz:16},{text:p.cond,sz:16},{text:p.manejo,sz:16}]); });
+      body.push(table([1600,2600,2600,2000,2000],rows));
     } else body.push(para("Sin pacientes activos al cierre del turno.", { sz:18, color:"5F6368" }));
 
     body.push(para("", { spaceBefore:200 }));
@@ -581,7 +581,7 @@
     var kpi=[['Consultas box',k.consultas],['Nacimientos',k.nac],['Vaginales',k.vag],['Cesáreas',k.ces],['Fórceps',k.forc],['Interv.',k.interv]]
       .map(function(p){return '<div style="flex:1;min-width:64px;background:#f4f6f9;border-radius:6px;padding:6px;text-align:center"><div style="font-size:17px;font-weight:800;color:#1A4D8F">'+p[1]+'</div><div style="font-size:9.5px;color:#5F6368">'+p[0]+'</div></div>';}).join("");
     var nov=m.novedades.length?'<ul style="margin:4px 0 0;padding-left:18px">'+m.novedades.map(function(n){return '<li style="margin:3px 0;font-size:12.5px">'+eh(n)+'</li>';}).join("")+'</ul>':'<p style="color:#5F6368;margin:4px 0;font-size:12.5px">Sin novedades registradas.</p>';
-    var pend=m.pendientes.length?'<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-top:4px"><tr style="background:#1A4D8F;color:#fff"><th style="padding:5px;text-align:left">Ubicación</th><th style="padding:5px;text-align:left">Paciente</th><th style="padding:5px;text-align:left">Diagnóstico</th><th style="padding:5px;text-align:left">Condición</th></tr>'+m.pendientes.map(function(p){return '<tr style="border-bottom:1px solid #e2e6ec"><td style="padding:5px">'+eh(p.ubic)+'</td><td style="padding:5px;font-weight:600">'+eh(p.ident)+'</td><td style="padding:5px">'+eh(p.dx)+'</td><td style="padding:5px">'+eh(p.cond)+'</td></tr>';}).join("")+'</table>':'<p style="color:#5F6368;margin:4px 0;font-size:12.5px">Sin pacientes activos al cierre.</p>';
+    var pend=m.pendientes.length?'<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-top:4px"><tr style="background:#1A4D8F;color:#fff"><th style="padding:5px;text-align:left">Ubicación</th><th style="padding:5px;text-align:left">Paciente</th><th style="padding:5px;text-align:left">Diagnóstico</th><th style="padding:5px;text-align:left">Condición</th><th style="padding:5px;text-align:left">Manejo</th></tr>'+m.pendientes.map(function(p){return '<tr style="border-bottom:1px solid #e2e6ec"><td style="padding:5px">'+eh(p.ubic)+'</td><td style="padding:5px;font-weight:600">'+eh(p.ident)+'</td><td style="padding:5px">'+eh(p.dx)+'</td><td style="padding:5px">'+eh(p.cond)+'</td><td style="padding:5px">'+eh(p.manejo)+'</td></tr>';}).join("")+'</table>':'<p style="color:#5F6368;margin:4px 0;font-size:12.5px">Sin pacientes activos al cierre.</p>';
     function firma(l,n,r){ return '<div style="flex:1;border-top:2px solid #1A4D8F;padding-top:4px;text-align:center"><div style="font-size:11.5px;font-weight:700;color:#1A4D8F">'+l+'</div><div style="font-size:12px;font-weight:700">'+eh(n||"")+'</div><div style="font-size:10.5px;color:#5F6368">'+(r?"RUT "+eh(r):"")+'</div></div>'; }
     return '<div style="font-family:\'Helvetica Neue\',Arial,sans-serif;color:#1f2733;background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.1)">'+
       '<div style="text-align:center;border-bottom:2px solid #1A4D8F;padding-bottom:8px;margin-bottom:10px">'+
@@ -776,8 +776,8 @@
       t.observacion, function (x) { return [x.n || "", fmtIdent(x.ident), x.diagnosticos || "", x.condicion || ""]; }, true);
 
     section("III. Pacientes en Obstetricia-Ginecología y/u otras unidades",
-      ["N° Cama", "Identificación del paciente", "Diagnóstico principal", "Condición actual"],
-      t.otrasUnidades, function (x) { return [x.cama || "", fmtIdent(x.ident), x.diagnosticos || "", x.condicion || ""]; }, true);
+      ["N° Cama", "Servicio", "Identificación del paciente", "Diagnóstico principal", "Condición actual"],
+      t.otrasUnidades, function (x) { return [x.cama || "", x.servicio || "", fmtIdent(x.ident), x.diagnosticos || "", x.condicion || ""]; }, true);
 
     section("IV. Intervenciones Ginecológicas (operadas)",
       ["Identificación del paciente", "Diagnóstico", "Intervención", "Comentarios"],
@@ -896,7 +896,9 @@
                { k: "diagnosticos", label: "Diagnósticos", type: "area" },
                { k: "condicion", label: "Condición actual", type: "area" }] },
     { key: "otrasUnidades", icon: "", title: "Otras unidades (pacientes en visita)",
-      fields: [{ k: "cama", label: "Cama", type: "short" }, IDENT,
+      fields: [{ k: "cama", label: "Cama", type: "short" },
+               { k: "servicio", label: "Servicio", type: "select", options: ["UCI", "UCO", "Intermedio quirúrgico", "Medicina", "Cirugía", "Pediatría", "Psiquiatría", "Ginecología", "Obstetricia", "Otro"] },
+               IDENT,
                { k: "diagnosticos", label: "Diagnósticos", type: "area" },
                { k: "condicion", label: "Condición actual", type: "area" }] },
     { key: "intervenciones", icon: "", title: "Intervenciones ginecológicas (operadas)",
@@ -1028,12 +1030,14 @@
         e.className = "entry";
         var extra = (sec.key === "partoIntegral" || sec.key === "ingresos")
           ? '<button class="btn sm" data-nac style="background:#eaf1fb;color:var(--azul)">→ Nació</button>' : "";
+        if (IDENT_SECS[sec.key]) extra += '<button class="btn sm" data-mov style="background:#eef1f5;color:#333">Mover a…</button>';
         if (IDENT_SECS[sec.key]) extra += '<button class="btn sm" data-dom style="background:#f3ecf9;color:#6b3fa0">→ Dominga</button>';
         e.innerHTML = '<div class="ttl">' + escapeHtml(s.ttl) + '</div>' +
           (s.meta ? '<div class="meta">' + escapeHtml(s.meta) + '</div>' : '') +
           '<div class="acts"><button class="btn sm ghost" data-edit>Editar</button>' + extra + '</div>';
         $("[data-edit]", e).addEventListener("click", function () { openEditor(sec.key, idx); });
         var nb = $("[data-nac]", e); if (nb) nb.addEventListener("click", function () { traspasarANacimiento(sec.key, idx); });
+        var mb = $("[data-mov]", e); if (mb) mb.addEventListener("click", function () { openMovePicker(sec.key, idx); });
         var db = $("[data-dom]", e); if (db) db.addEventListener("click", function () { traspasarADominga(sec.key, idx); });
         body.appendChild(e);
       });
@@ -1053,6 +1057,48 @@
   }
 
   function escapeHtml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  // ---- Mover paciente entre secciones (evolución clínica dentro del turno) ----
+  function extractPaciente(item) {
+    return {
+      ident: JSON.parse(JSON.stringify(item.ident || {})),
+      dx: item.diagnosticos || item.diagnostico || "",
+      cond: item.condicion || item.manejo || item.comentarios || ""
+    };
+  }
+  function buildForSection(p, destKey) {
+    var i = p.ident;
+    if (destKey === "partoIntegral") return { sala: "", ident: i, diagnosticos: p.dx, condicion: p.cond };
+    if (destKey === "observacion") return { n: "", ident: i, diagnosticos: p.dx, condicion: p.cond };
+    if (destKey === "otrasUnidades") return { cama: "", servicio: "", ident: i, diagnosticos: p.dx, condicion: p.cond };
+    if (destKey === "intervenciones") return { ident: i, diagnostico: p.dx, intervencion: "", comentarios: p.cond };
+    if (destKey === "ingresos") return { cama: "", ident: i, diagnosticos: p.dx, manejo: p.cond, comentarios: "" };
+    return { ident: i };
+  }
+  function moverASeccion(fromKey, idx, destKey) {
+    var item = state.turno[fromKey][idx]; if (!item) return;
+    var obj = buildForSection(extractPaciente(item), destKey);
+    state.turno[destKey].push(obj);
+    state.turno[fromKey].splice(idx, 1);
+    renderSummary(); renderSections(); saveSoon();
+    openEditor(destKey, state.turno[destKey].length - 1); // completar cama/servicio/sala del destino
+  }
+  var DEST_LABELS = [["partoIntegral", "Preparto"], ["observacion", "Observación"], ["otrasUnidades", "Otras unidades"], ["intervenciones", "Operada (Intervención)"], ["ingresos", "Ingresos"]];
+  function openMovePicker(fromKey, idx) {
+    modalMode = "move";
+    $("#mTitle").textContent = "Mover paciente a…";
+    var form = $("#mForm"); form.innerHTML = "";
+    DEST_LABELS.filter(function (d) { return d[0] !== fromKey; }).forEach(function (d) {
+      var b = document.createElement("button");
+      b.className = "btn ghost"; b.style.cssText = "display:block;width:100%;margin-bottom:8px;text-align:left;font-weight:600";
+      b.textContent = "→ " + d[1];
+      b.addEventListener("click", function () { closeModal(); moverASeccion(fromKey, idx, d[0]); });
+      form.appendChild(b);
+    });
+    $("#mSave").style.display = "none";
+    $("#mDelete").style.display = "none";
+    $("#modal").classList.add("show");
+  }
 
   // Traspasar una paciente de Preparto/Ingresos a Nacimientos (terminó su embarazo en el turno)
   function traspasarANacimiento(secKey, idx) {
@@ -1119,6 +1165,7 @@
       }
       form.appendChild(wrap);
     });
+    $("#mSave").style.display = "";
     $("#mDelete").style.display = idx >= 0 ? "" : "none";
     $("#modal").classList.add("show");
   }
@@ -1127,6 +1174,7 @@
 
   $("#mCancel").addEventListener("click", closeModal);
   $("#mSave").addEventListener("click", function () {
+    if (modalMode === "move") { return; }
     if (modalMode === "dominga") {
       var d = domEditIdx >= 0 ? state.dominga[domEditIdx] : { id: Date.now(), hecho: false };
       $$("#mForm [data-df]").forEach(function (el) { d[el.getAttribute("data-df")] = el.value.trim(); });
@@ -1212,20 +1260,19 @@
   /* ---------- cerrar turno (archivar + nuevo arrastrando pendientes) ---------- */
   function cerrarTurno() {
     var c = counts();
-    var ok = confirm("ARCHIVAR el turno del " + isoToDMY(state.turno.meta.fecha) + " (" + c.nac + " nac · " + c.interv + " interv · " + c.consultas + " consultas).\n\n• Queda guardado en HISTORIAL (con Word, Excel y Enviar disponibles ahí).\n• Se abre un turno NUEVO EN BLANCO (arrastrando los pacientes que siguen).\n\n¿Ya generaste/enviaste el Word y el Excel? Si no, cancela y hazlo primero.");
+    var ok = confirm("ARCHIVAR el turno del " + isoToDMY(state.turno.meta.fecha) + " (" + c.nac + " nac · " + c.interv + " interv · " + c.consultas + " consultas).\n\n• Queda guardado en HISTORIAL (con Word, Excel y Enviar disponibles ahí).\n• Se abre un turno NUEVO EN BLANCO (mantiene solo el equipo médico; no arrastra pacientes).\n\n¿Ya generaste/enviaste el Word y el Excel? Si no, cancela y hazlo primero.");
     if (!ok) return;
     var snapshot = JSON.parse(JSON.stringify(state.turno));
     state.history.unshift({ id: Date.now(), fecha: snapshot.meta.fecha, savedAt: new Date().toISOString(),
       resumen: c.nac + " nac · " + c.interv + " interv · " + c.consultas + " consultas", turno: snapshot });
     if (state.history.length > 120) state.history.pop();
     kvSet("history", state.history);
-    // nuevo turno arrastrando pendientes
+    // nuevo turno EN BLANCO (mantiene solo el equipo médico; no arrastra pacientes)
     var nuevo = emptyTurno();
     nuevo.meta.staff = snapshot.meta.staff.slice();
     nuevo.meta.nombreSaliente = snapshot.meta.nombreSaliente || "";
     nuevo.meta.rutSaliente = snapshot.meta.rutSaliente || "";
     nuevo.meta.internos = [];
-    CARRY.forEach(function (k) { nuevo[k] = JSON.parse(JSON.stringify(snapshot[k] || [])); });
     state.turno = nuevo; kvSet("current", state.turno);
     // La firma del entrante es de ESTE turno: se limpia para el siguiente.
     state.firmaEntrante = null; kvSet("firmaEntrante", null);
@@ -1290,7 +1337,14 @@
       x.onclick = function () { dl(xlsxBlobOf(h.turno), xlsxNameOf(h.turno)); };
       var e = document.createElement("button"); e.className = "btn sm pri"; e.textContent = "Enviar";
       e.onclick = function () { shareTurno(h.turno); };
-      actions.appendChild(w); actions.appendChild(x); actions.appendChild(e);
+      var del = document.createElement("button"); del.className = "btn sm danger"; del.textContent = "Eliminar";
+      del.onclick = function () {
+        if (confirm("¿ELIMINAR el turno del " + isoToDMY(h.fecha) + " del historial?\n\n" + (h.resumen || "") + "\n\nEsta acción NO se puede deshacer. Asegúrate de tener el Word/Excel guardado o enviado.")) {
+          var i = state.history.indexOf(h); if (i >= 0) state.history.splice(i, 1);
+          kvSet("history", state.history); renderHistory();
+        }
+      };
+      actions.appendChild(w); actions.appendChild(x); actions.appendChild(e); actions.appendChild(del);
       row.appendChild(actions);
       host.appendChild(row);
     });
@@ -1335,6 +1389,7 @@
       '<div class="fld"><label class="f">Diagnóstico</label><textarea data-df="diagnostico">' + escapeHtml(c.diagnostico || "") + '</textarea></div>' +
       '<div class="fld"><div class="row"><div><label class="f">Fecha resolución</label><input type="date" data-df="fechaResolucion" value="' + attr(c.fechaResolucion) + '"></div>' +
       '<div><label class="f">Citar hasta</label><input type="date" data-df="fechaCitacion" value="' + attr(c.fechaCitacion) + '"></div></div></div>';
+    $("#mSave").style.display = "";
     $("#mDelete").style.display = "";
     $("#modal").classList.add("show");
   }
@@ -1346,7 +1401,7 @@
     var defs = [
       ["I. Preparto", t.partoIntegral, ["Sala", "Identificación", "Diagnóstico", "Condición"], function (x) { return [x.sala || "", identSummary(x.ident), x.diagnosticos || "", x.condicion || ""]; }],
       ["II. Observación", t.observacion, ["N°", "Identificación", "Diagnóstico", "Condición"], function (x) { return [x.n || "", identSummary(x.ident), x.diagnosticos || "", x.condicion || ""]; }],
-      ["III. Otras unidades", t.otrasUnidades, ["Cama", "Identificación", "Diagnóstico", "Condición"], function (x) { return [x.cama || "", identSummary(x.ident), x.diagnosticos || "", x.condicion || ""]; }],
+      ["III. Otras unidades", t.otrasUnidades, ["Cama", "Servicio", "Identificación", "Diagnóstico", "Condición"], function (x) { return [x.cama || "", x.servicio || "", identSummary(x.ident), x.diagnosticos || "", x.condicion || ""]; }],
       ["IV. Intervenciones", t.intervenciones, ["Identificación", "Diagnóstico", "Intervención", "Comentarios"], function (x) { return [identSummary(x.ident), x.diagnostico || "", x.intervencion || "", x.comentarios || ""]; }],
       ["V. Ingresos", t.ingresos, ["Cama", "Identificación", "Diagnósticos", "Manejo", "Comentarios"], function (x) { return [x.cama || "", identSummary(x.ident), x.diagnosticos || "", x.manejo || "", x.comentarios || ""]; }],
       ["VI. Nacimientos", t.nacimientos, ["Identificación", "Diagnóstico", "Tipo", "Info RN", "Comentarios"], function (x) { return [(x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.diagnostico || "", x.tipoParto || "", x.infoRN || "", x.comentarios || ""]; }],
