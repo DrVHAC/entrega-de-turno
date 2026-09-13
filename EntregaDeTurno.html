@@ -291,6 +291,7 @@
   </div>
 </div>
 <script>
+
 /* ============================================================================
  * docxcore.js — Generador de .docx 100% offline, sin dependencias.
  * DOM-free: corre en Node (test) y en el navegador (app) sin cambios.
@@ -940,6 +941,7 @@
 })(typeof self !== "undefined" ? self : this);
 </script>
 <script>
+
 /* ============================================================================
  * xlsxcore.js — Generador de .xlsx 100% offline, sin dependencias.
  * Reutiliza el escritor ZIP y fmtIdent de DocxCore. DOM-free (Node + navegador).
@@ -1149,6 +1151,7 @@
 })(typeof self !== "undefined" ? self : this);
 </script>
 <script>
+
 /* ================= Entrega de Turno — app v0.1 ================= */
 (function () {
   "use strict";
@@ -1302,13 +1305,15 @@
         var extra = (sec.key === "partoIntegral" || sec.key === "ingresos")
           ? '<button class="btn sm" data-nac style="background:#eaf1fb;color:var(--azul)">→ Nació</button>' : "";
         if (IDENT_SECS[sec.key]) extra += '<button class="btn sm" data-mov style="background:#eef1f5;color:#333">Mover a…</button>';
-        if (IDENT_SECS[sec.key]) extra += '<button class="btn sm" data-dom style="background:#f3ecf9;color:#6b3fa0">→ Dominga</button>';
+        if (IDENT_SECS[sec.key] || sec.key === "nacimientos") extra += '<button class="btn sm" data-ml style="background:#fdeeee;color:#a03030">Méd-legal</button>';
+        if (IDENT_SECS[sec.key] || sec.key === "nacimientos") extra += '<button class="btn sm" data-dom style="background:#f3ecf9;color:#6b3fa0">→ Dominga</button>';
         e.innerHTML = '<div class="ttl">' + escapeHtml(s.ttl) + '</div>' +
           (s.meta ? '<div class="meta">' + escapeHtml(s.meta) + '</div>' : '') +
           '<div class="acts"><button class="btn sm ghost" data-edit>Editar</button>' + extra + '</div>';
         $("[data-edit]", e).addEventListener("click", function () { openEditor(sec.key, idx); });
         var nb = $("[data-nac]", e); if (nb) nb.addEventListener("click", function () { traspasarANacimiento(sec.key, idx); });
         var mb = $("[data-mov]", e); if (mb) mb.addEventListener("click", function () { openMovePicker(sec.key, idx); });
+        var mlb = $("[data-ml]", e); if (mlb) mlb.addEventListener("click", function () { traspasarAMedLegal(sec.key, idx); });
         var db = $("[data-dom]", e); if (db) db.addEventListener("click", function () { traspasarADominga(sec.key, idx); });
         body.appendChild(e);
       });
@@ -1371,6 +1376,35 @@
     $("#modal").classList.add("show");
   }
 
+  // Traspasar una paciente del turno al Registro médico-legal (privado)
+  function traspasarAMedLegal(secKey, idx) {
+    var x = state.turno[secKey][idx]; if (!x) return;
+    var id = x.ident || {};
+    var ubic = SECMAP[secKey] ? SECMAP[secKey].title : "";
+    var caso = {
+      id: Date.now(),
+      fecha: state.turno.meta.fecha || todayISO(),
+      paciente: id.nombre || x.nombre || "",
+      ficha: id.ficha || x.ficha || "",
+      dau: id.dau || x.dau || "",
+      profesional: state.turno.meta.nombreSaliente || (state.turno.meta.staff || []).join(" / "),
+      rut: state.turno.meta.rutSaliente || "",
+      equipo: (state.turno.meta.staff || []).join(" / ") + ((state.turno.meta.internos || []).length ? " · Internos: " + state.turno.meta.internos.join(" / ") : ""),
+      motivo: "Paciente registrada en " + ubic + " durante el turno del " + isoToDMY(state.turno.meta.fecha) + ".",
+      diagnostico: x.diagnosticos || x.diagnostico || "",
+      hallazgos: x.condicion || (secKey === "nacimientos" ? ("Resultado: " + DocxCore.fmtResultado(x)) : ""),
+      procedimiento: x.intervencion || (secKey === "nacimientos" ? ("Parto " + (x.tipoParto || "")) : ""),
+      complicaciones: (secKey === "nacimientos" || secKey === "intervenciones") ? (x.comentarios || "") : "",
+      decision: x.manejo || "",
+      consentimiento: "", antecedentes: "", estadoFinal: "", derivaciones: "",
+      observaciones: (secKey === "nacimientos" || secKey === "intervenciones") ? "" : (x.comentarios || ""),
+      cronologia: []
+    };
+    state.medlegal.push(caso);
+    kvSet("medlegal", state.medlegal); updateMlBadge();
+    openMedLegal(state.medlegal.length - 1);
+  }
+
   // Traspasar una paciente de Preparto/Ingresos a Nacimientos (terminó su embarazo en el turno)
   function traspasarANacimiento(secKey, idx) {
     var x = state.turno[secKey][idx]; if (!x) return;
@@ -1388,7 +1422,7 @@
     var x = state.turno[secKey][idx]; if (!x) return;
     var id = x.ident || {};
     var res = todayISO();
-    var caso = { id: Date.now(), nombre: id.nombre || "", ficha: id.ficha || "", dau: id.dau || "",
+    var caso = { id: Date.now(), nombre: id.nombre || x.nombre || "", ficha: id.ficha || x.ficha || "", dau: id.dau || x.dau || "",
                  diagnostico: x.diagnosticos || x.diagnostico || "", fechaResolucion: res,
                  fechaCitacion: addDaysISO(res, 15), hecho: false };
     state.dominga.push(caso);
@@ -1440,6 +1474,16 @@
         wrap.innerHTML = '<label class="f">' + f.label + '</label><input type="text"' + cls + ' data-f="' + f.k + '" value="' + attr(item[f.k]) + '">';
       }
       form.appendChild(wrap);
+    });
+    // Blindaje contra autorrelleno del navegador: fijar valores explícitamente
+    $$("#mForm [data-f]").forEach(function (el) {
+      var key = el.getAttribute("data-f"), val;
+      if (key.indexOf("ident.") === 0) val = (item.ident || {})[key.split(".")[1]];
+      else val = item[key];
+      el.setAttribute("autocomplete", "off");
+      el.setAttribute("autocorrect", "off");
+      if (el.type === "checkbox") el.checked = !!val;
+      else el.value = (val == null ? "" : val);
     });
     $("#mSave").style.display = "";
     $("#mDelete").style.display = idx >= 0 ? "" : "none";
