@@ -20,9 +20,10 @@
     --radio:14px;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  button,select,textarea,input{font-family:inherit}
   html,body{margin:0}
   body{
-    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-family:"Helvetica Neue","HelveticaNeue",Helvetica,-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;
     background:var(--bg); color:var(--tinta); font-size:16px; line-height:1.4;
     padding-bottom:96px;
   }
@@ -150,6 +151,13 @@
       </div>
     </div>
 
+    <div class="card" style="margin-top:6px">
+      <div class="head" id="btnMedLegal" style="cursor:pointer">
+        <div class="t">Registro médico-legal (privado)</div>
+        <span style="display:flex;align-items:center;gap:8px"><span class="badge zero" id="mlBadge">0</span><span class="chev" style="transform:rotate(0deg)">▶</span></span>
+      </div>
+    </div>
+
   </div>
 
   <!-- ===== PANTALLA FIRMA ===== -->
@@ -198,6 +206,42 @@
           <button class="btn pri" id="pvSend">Enviar ambos</button>
         </div>
         <button class="btn" id="pvBack" style="margin:12px auto 0; display:block; width:auto; min-width:160px; padding-left:28px; padding-right:28px">← Volver</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MÓDULO MÉDICO-LEGAL (privado) ===== -->
+  <div id="scrMedLegal" class="screen">
+    <div class="card open"><div class="head"><div class="t">Registro médico-legal (privado)</div></div>
+      <div class="body">
+        <p class="hint">Respaldo profesional de casos sensibles. <b>No se incluye en el Word ni en el Excel de la entrega de turno</b>; se exporta como documento aparte y se guarda solo en este teléfono.</p>
+        <div id="mlList"><div class="empty">Sin casos registrados.</div></div>
+        <button class="btn addbtn" id="mlNuevo" style="margin-top:10px">+ Nuevo caso</button>
+        <button class="btn" id="mlBack" style="margin:12px auto 0; display:block; width:auto; min-width:160px; padding-left:28px; padding-right:28px">← Volver</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="scrMedLegalEdit" class="screen">
+    <div class="card open"><div class="head"><div class="t" id="mlEditTitle">Caso médico-legal</div></div>
+      <div class="body">
+        <div id="mlForm"></div>
+        <div class="card" style="box-shadow:none;border:1px solid var(--linea);margin-top:10px">
+          <div class="head"><div class="t">Cronología del caso</div></div>
+          <div class="body" style="display:block">
+            <div id="mlCron"></div>
+            <button class="btn addbtn" id="mlAddCron">+ Añadir hora / evento</button>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn ghost" id="mlDelete">Eliminar</button>
+          <button class="btn pri" id="mlSave">Guardar caso</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="btn ghost" id="mlWord">Descargar Word</button>
+          <button class="btn ghost" id="mlSend">Enviar</button>
+        </div>
+        <button class="btn" id="mlEditBack" style="margin:12px auto 0; display:block; width:auto; min-width:160px; padding-left:28px; padding-right:28px">← Volver</button>
       </div>
     </div>
   </div>
@@ -384,8 +428,8 @@
   function cell(width, text, opts) {
     opts = opts || {};
     var shd = opts.shd ? '<w:shd w:val="clear" w:color="auto" w:fill="' + opts.shd + '"/>' : "";
-    var valign = '<w:vAlign w:val="top"/>';
-    var pOpts = { bold: opts.bold, sz: opts.sz || 18, color: opts.color };
+    var valign = '<w:vAlign w:val="' + (opts.valign || "top") + '"/>';
+    var pOpts = { bold: opts.bold, sz: opts.sz || 18, color: opts.color, align: opts.align };
     return "<w:tc><w:tcPr><w:tcW w:w=\"" + width + "\" w:type=\"dxa\"/>" + shd + valign +
       "</w:tcPr>" + para(text, pOpts) + "</w:tc>";
   }
@@ -410,6 +454,40 @@
   }
 
   // ---- render de identificación -------------------------------------------
+  // Resultado obstétrico: único/múltiple + RN1..RN3
+  function fmtRNItem(r) {
+    if (!r) return "";
+    var p = [];
+    if (r.vitalidad) p.push(r.vitalidad);
+    var mad = [];
+    if (r.madurez) mad.push(r.madurez);
+    if (r.semanas) mad.push(r.semanas + " sem");
+    if (mad.length) p.push(mad.join(" "));
+    if (r.sexo && r.sexo !== "ND") p.push(r.sexo);
+    if (r.peso) p.push(r.peso + " g");
+    if (r.apgar) p.push("APGAR " + r.apgar);
+    var s = p.join(", ");
+    if (r.obs) s += (s ? ". " : "") + r.obs;
+    return s;
+  }
+  function fmtResultado(x) {
+    if (!x) return "";
+    var res = x.resultado;
+    if (!res || !res.rns || !res.rns.length) {
+      // compatibilidad con registros antiguos
+      var old = [];
+      if (x.rnTipo) old.push(x.rnTipo);
+      if (x.rnSemanas) old.push(x.rnSemanas + " sem");
+      if (x.rnPeso) old.push(x.rnPeso + " g");
+      if (x.rnApgar) old.push("APGAR " + x.rnApgar);
+      var s = old.join(", ");
+      if (x.infoRN) s += (s ? ". " : "") + x.infoRN;
+      return s;
+    }
+    if (res.tipo !== "Múltiple" || res.rns.length === 1) return fmtRNItem(res.rns[0]);
+    return "Múltiple (" + res.rns.length + "). " + res.rns.map(function (r, i) { return "RN" + (i + 1) + ": " + fmtRNItem(r); }).join(" | ");
+  }
+
   function fmtIdent(id) {
     if (!id) return "";
     if (typeof id === "string") return id;
@@ -422,13 +500,25 @@
     return s.trim();
   }
 
+  // Formato estructurado del recién nacido (multilínea). Retrocompatible con infoRN libre.
+  function fmtRN(x) {
+    if (!x) return "";
+    var L = [];
+    if (x.rnTipo) L.push("RN: " + x.rnTipo);
+    if (x.rnSemanas) L.push(String(x.rnSemanas).replace(/\s*semanas?$/i, "") + " semanas");
+    if (x.rnPeso) L.push(String(x.rnPeso).replace(/\s*g$/i, "") + " g");
+    if (x.rnApgar) L.push("APGAR " + x.rnApgar);
+    if (x.infoRN) L.push(x.infoRN);
+    return L.join("\n");
+  }
+
   // ---- sección genérica ----------------------------------------------------
   function sectionHeading(txt) {
     return para(txt, { bold: true, caps: true, sz: 20, color: "1A4D8F", spaceBefore: 160, spaceAfter: 60 });
   }
   var HDR_SHD = "1A4D8F", HDR_COLOR = "FFFFFF";
   function headerRow(labels) {
-    return labels.map(function (l) { return { text: l, bold: true, shd: HDR_SHD, color: HDR_COLOR, sz: 18 }; });
+    return labels.map(function (l) { return { text: l, bold: true, shd: HDR_SHD, color: HDR_COLOR, sz: 18, align: "center", valign: "center" }; });
   }
 
   // ---- documento -----------------------------------------------------------
@@ -489,16 +579,62 @@
     var kpis={consultas:consultas, nac:nac.length, vag:vag, ces:ces, forc:forc, interv:interv, ing:ing.length, pre:pre.length, obs:obs.length, otras:otras.length};
     function np(n,s,p){ return n+" "+(Number(n)===1?s:p); }
     var resumen = "Durante el turno de 24 horas del "+(meta.fecha||"")+", el equipo de turno"+
-      (staff? " ("+staff+")":"")+" registró "+np(consultas,"atención","atenciones")+" en el box de Urgencia. "+
+      (staff? " ("+staff+")":"")+" gestionó una carga asistencial de "+np(consultas,"atención","atenciones")+" en el box de Urgencia. "+
       "Se atendieron "+np(nac.length,"nacimiento","nacimientos")+
       (nac.length? " ("+vag+" "+(vag===1?"vaginal":"vaginales")+", "+ces+" "+(ces===1?"cesárea":"cesáreas")+", "+forc+" fórceps)":"")+
-      " y se realizaron "+np(interv,"intervención ginecológica","intervenciones ginecológicas")+". "+
-      "Hubo "+np(ing.length,"ingreso","ingresos")+" a hospitalización. "+
-      "Al cierre permanecen "+pre.length+" en preparto, "+obs.length+" en observación y "+otras.length+" en otras unidades.";
+      " y se realizaron "+np(interv,"intervención ginecológica","intervenciones ginecológicas")+", con "+np(ing.length,"ingreso","ingresos")+" a hospitalización. "+
+      "Al cierre del turno permanecen activas "+np(pre.length,"paciente","pacientes")+" en preparto, "+obs.length+" en observación y "+otras.length+" en otras unidades, cuyo detalle y manejo se consignan en la tabla de pendientes.";
+    var pctCes = nac.length ? Math.round(ces / nac.length * 100) : 0;
+    var pctVag = nac.length ? Math.round(vag / nac.length * 100) : 0;
+    var activos = pre.length + obs.length + otras.length;
+    var analisis = "";
+    if (nac.length) analisis += "La tasa de cesáreas del turno fue de " + pctCes + "% (" + ces + "/" + nac.length + "), con " + pctVag + "% de partos vaginales. ";
+    analisis += "La carga del box de Urgencia (" + consultas + " atenciones) " +
+      (Number(consultas) >= 60 ? "se ubicó en rango alto para un turno de 24 horas" : (Number(consultas) >= 30 ? "se mantuvo en rango habitual" : "se ubicó en rango bajo")) + ". ";
+    if (interv) analisis += "La actividad quirúrgica ginecológica alcanzó " + np(interv, "procedimiento", "procedimientos") + ". ";
+    analisis += activos ? "Se traspasan " + np(activos, "paciente activa", "pacientes activas") + " al turno entrante." : "No se traspasan pacientes activas al turno entrante.";
+
+    // ---- Guion adaptativo: estándar (compacto) vs relevante (detallado) ----
+    function esRelevante(x) {
+      var res = x.resultado;
+      if (x.comentarios && x.comentarios.trim()) return true;          // procedimiento con incidencias
+      if (!res || !res.rns || !res.rns.length) {                        // formato antiguo
+        return !!((x.infoRN && x.infoRN.trim()) || (x.rnTipo && /pret/i.test(x.rnTipo)));
+      }
+      if (res.tipo === "Múltiple" || res.rns.length > 1) return true;   // gemelar/triple
+      return res.rns.some(function (r) {
+        if (r.vitalidad && /óbito|obito/i.test(r.vitalidad)) return true;
+        if (r.madurez && /pret/i.test(r.madurez)) return true;
+        if (r.obs && r.obs.trim()) return true;
+        var ap = String(r.apgar || "").split(/[\/\-\s]+/).filter(Boolean).map(Number);
+        if (ap.length && ap.some(function (v) { return !isNaN(v) && v < 7; })) return true;
+        return false;
+      });
+    }
+    var nacRelevantes = nac.filter(esRelevante);
+    var nacEstandar = nac.filter(function (x) { return !esRelevante(x); });
+    var modoDetalle = nacRelevantes.length > 0;
+    // Frase compacta para los partos sin incidencias
+    var resumenEstandar = "";
+    if (nacEstandar.length) {
+      function cE(pfx) { return nacEstandar.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf(pfx) === 0; }).length; }
+      var pe = [];
+      if (cE("vag")) pe.push(cE("vag") + " vaginal" + (cE("vag") > 1 ? "es" : ""));
+      if (cE("ces")) pe.push(cE("ces") + " cesárea" + (cE("ces") > 1 ? "s" : ""));
+      if (cE("f")) pe.push(cE("f") + " fórceps");
+      resumenEstandar = np(nacEstandar.length, "nacimiento", "nacimientos") + " sin incidencias" +
+        (pe.length ? " (" + pe.join(", ") + ")" : "") + ": recién nacidos únicos, de término, vivos, con APGAR y examen físico normales.";
+    }
+
+    var nacDetalle = (modoDetalle ? nacRelevantes : []).map(function (x) {
+      return { madre: (x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), dx: x.diagnostico || "", tipo: x.tipoParto || "", rn: fmtResultado(x), obs: x.comentarios || "" };
+    });
+
     var novedades=[];
-    ing.forEach(function(x){ novedades.push(fmtIdent(x.ident)+(x.diagnosticos?": "+x.diagnosticos:"")+(x.manejo?" — "+x.manejo:"")); });
+    (t.intervenciones||[]).forEach(function(x){ novedades.push("Intervención — "+fmtIdent(x.ident)+(x.diagnostico?": "+x.diagnostico:"")+(x.intervencion?" → "+x.intervencion:"")+(x.comentarios?" ("+x.comentarios+")":"")); });
+    ing.forEach(function(x){ novedades.push("Ingreso — "+fmtIdent(x.ident)+(x.diagnosticos?": "+x.diagnosticos:"")+(x.manejo?" — "+x.manejo:"")); });
     (t.peritajes||[]).forEach(function(x){ var e=[]; if(x.autorizada)e.push("autorizada"); if(x.realizada)e.push("realizada");
-      novedades.push("Peritaje médico-legal: "+(x.nombre||"")+(x.dau?" (DAU "+x.dau+")":"")+(e.length?" — "+e.join(", "):"")); });
+      novedades.push("Peritaje médico-legal — "+(x.nombre||"")+(x.dau?" (DAU "+x.dau+")":"")+(e.length?" — "+e.join(", "):"")); });
     var pend=[];
     pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
     obs.forEach(function(x){ pend.push({ubic:"Observación"+(x.n?" "+x.n:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
@@ -507,7 +643,7 @@
     return { fecha:meta.fecha||"", staff:staff,
       saliente: meta.nombreSaliente || staff, rutSaliente: meta.rutSaliente||"",
       entrante: meta.entrante||"", rutEntrante: meta.rutEntrante||"",
-      kpis:kpis, resumen:resumen,
+      kpis:kpis, resumen:resumen, analisis:analisis, nacDetalle:nacDetalle, modoDetalle:modoDetalle, resumenEstandar:resumenEstandar,
       chart:[{label:"Vaginales",value:vag},{label:"Cesáreas",value:ces},{label:"Fórceps",value:forc}],
       novedades:novedades, pendientes:pend };
   }
@@ -530,6 +666,28 @@
       '<w:tblGrid><w:gridCol w:w="'+LBL+'"/><w:gridCol w:w="'+Math.round(BAR/2)+'"/><w:gridCol w:w="'+Math.round(BAR/2)+'"/><w:gridCol w:w="'+VAL+'"/></w:tblGrid>'+rows+'</w:tbl>';
   }
 
+  // Franja de 3 gráficos lado a lado, separados por bordes
+  function chartStrip(charts) {
+    var W = 3600;
+    var borders = "<w:tblBorders>" +
+      ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(function (s) {
+        return '<w:' + s + ' w:val="single" w:sz="4" w:space="0" w:color="9AA0A6"/>';
+      }).join("") + "</w:tblBorders>";
+    var titulos = "<w:tr>" + charts.map(function (c) {
+      return '<w:tc><w:tcPr><w:tcW w:w="' + W + '" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="1A4D8F"/><w:vAlign w:val="center"/></w:tcPr>' +
+        para(c.titulo, { bold: true, sz: 15, color: "FFFFFF", align: "center" }) + '</w:tc>';
+    }).join("") + "</w:tr>";
+    var imgs = "<w:tr>" + charts.map(function (c, i) {
+      var inner = c.has
+        ? '<w:p><w:pPr><w:jc w:val="center"/></w:pPr>' + drawingXml(c.rId, c.extent, "grafico" + (i + 1), 110 + i) + "</w:p>"
+        : para("(sin datos)", { sz: 14, color: "5F6368", align: "center" });
+      return '<w:tc><w:tcPr><w:tcW w:w="' + W + '" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>' + inner + '</w:tc>';
+    }).join("") + "</w:tr>";
+    return '<w:tbl><w:tblPr><w:tblW w:w="' + (W * 3) + '" w:type="dxa"/><w:tblLayout w:type="fixed"/>' + borders + '</w:tblPr>' +
+      '<w:tblGrid><w:gridCol w:w="' + W + '"/><w:gridCol w:w="' + W + '"/><w:gridCol w:w="' + W + '"/></w:tblGrid>' +
+      titulos + imgs + '</w:tbl>';
+  }
+
   function buildDocumentXml(turno, sig) {
     var m = computeInforme(turno); sig = sig || {};
     var body = [];
@@ -538,16 +696,31 @@
     body.push(para("Turno 24 h · " + m.fecha + "    |    Entrega: " + (m.saliente||"—") + "  \u2192  " + (m.entrante||"—"), { sz:18, align:"center", spaceAfter:160 }));
 
     body.push(sectionHeading("Resumen ejecutivo"));
-    body.push(para(m.resumen, { sz:20, spaceAfter:120 }));
+    body.push(para(m.resumen, { sz:20, spaceAfter:60 }));
+    body.push(para(m.analisis, { sz:20, spaceAfter:120 }));
 
     body.push(sectionHeading("Actividad del turno"));
     var k=m.kpis;
     body.push(table([1800,1800,1800,1800,1800,1800],[
       headerRow(["Consultas box","Nacimientos","Vaginales","Cesáreas","Fórceps","Interv."]),
-      [{text:String(k.consultas),sz:22,bold:true},{text:String(k.nac),sz:22,bold:true},{text:String(k.vag),sz:20},{text:String(k.ces),sz:20},{text:String(k.forc),sz:20},{text:String(k.interv),sz:20}]
+      [{text:String(k.consultas),sz:22,bold:true,align:"center"},{text:String(k.nac),sz:22,bold:true,align:"center"},{text:String(k.vag),sz:20,align:"center"},{text:String(k.ces),sz:20,align:"center"},{text:String(k.forc),sz:20,align:"center"},{text:String(k.interv),sz:20,align:"center"}]
     ]));
-    body.push(para("Nacimientos por tipo", { sz:16, color:"5F6368", spaceBefore:120, spaceAfter:40 }));
-    body.push(barChartTable(m.chart));
+    body.push(para("Indicadores gráficos del turno", { sz:16, color:"5F6368", spaceBefore:140, spaceAfter:60 }));
+    if (sig.graficos && sig.graficos.length) {
+      body.push(chartStrip(sig.graficos));
+    } else {
+      body.push(barChartTable(m.chart));
+    }
+
+    if (m.nacDetalle.length || m.resumenEstandar) {
+      body.push(sectionHeading(m.modoDetalle ? "Nacimientos — detalle de casos relevantes" : "Nacimientos del turno"));
+      if (m.resumenEstandar) body.push(para(m.resumenEstandar, { sz:18, spaceAfter:(m.nacDetalle.length?60:0) }));
+      if (m.nacDetalle.length) {
+        var rn=[headerRow(["Madre","Diagnóstico","Tipo de parto","Resultado","Comentarios"])];
+        m.nacDetalle.forEach(function(x){ rn.push([{text:x.madre,sz:16,bold:true},{text:x.dx,sz:16},{text:x.tipo,sz:16,align:"center"},{text:x.rn,sz:16},{text:x.obs,sz:16}]); });
+        body.push(table([2400,2100,1500,2800,2000],rn));
+      }
+    }
 
     body.push(sectionHeading("Novedades del turno"));
     if(m.novedades.length){ m.novedades.forEach(function(n){ body.push(para("\u2022  "+n, { sz:18, spaceAfter:40 })); }); }
@@ -583,16 +756,19 @@
     var nov=m.novedades.length?'<ul style="margin:4px 0 0;padding-left:18px">'+m.novedades.map(function(n){return '<li style="margin:3px 0;font-size:12.5px">'+eh(n)+'</li>';}).join("")+'</ul>':'<p style="color:#5F6368;margin:4px 0;font-size:12.5px">Sin novedades registradas.</p>';
     var pend=m.pendientes.length?'<table style="width:100%;border-collapse:collapse;font-size:11.5px;margin-top:4px"><tr style="background:#1A4D8F;color:#fff"><th style="padding:5px;text-align:left">Ubicación</th><th style="padding:5px;text-align:left">Paciente</th><th style="padding:5px;text-align:left">Diagnóstico</th><th style="padding:5px;text-align:left">Condición</th><th style="padding:5px;text-align:left">Manejo</th></tr>'+m.pendientes.map(function(p){return '<tr style="border-bottom:1px solid #e2e6ec"><td style="padding:5px">'+eh(p.ubic)+'</td><td style="padding:5px;font-weight:600">'+eh(p.ident)+'</td><td style="padding:5px">'+eh(p.dx)+'</td><td style="padding:5px">'+eh(p.cond)+'</td><td style="padding:5px">'+eh(p.manejo)+'</td></tr>';}).join("")+'</table>':'<p style="color:#5F6368;margin:4px 0;font-size:12.5px">Sin pacientes activos al cierre.</p>';
     function firma(l,n,r){ return '<div style="flex:1;border-top:2px solid #1A4D8F;padding-top:4px;text-align:center"><div style="font-size:11.5px;font-weight:700;color:#1A4D8F">'+l+'</div><div style="font-size:12px;font-weight:700">'+eh(n||"")+'</div><div style="font-size:10.5px;color:#5F6368">'+(r?"RUT "+eh(r):"")+'</div></div>'; }
+    var nacTbl = (m.nacDetalle.length || m.resumenEstandar) ? '<h3 style="color:#1A4D8F;font-size:13px;margin:12px 0 4px">'+(m.modoDetalle?"Nacimientos — detalle de casos relevantes":"Nacimientos del turno")+'</h3>'+(m.resumenEstandar?'<p style="font-size:12px;margin:0 0 6px">'+eh(m.resumenEstandar)+'</p>':"")+(m.nacDetalle.length?'<table style="width:100%;border-collapse:collapse;font-size:11.5px"><tr style="background:#1A4D8F;color:#fff"><th style="padding:5px;text-align:left">Madre</th><th style="padding:5px;text-align:left">Diagnóstico</th><th style="padding:5px;text-align:center">Tipo</th><th style="padding:5px;text-align:left">Resultado</th><th style="padding:5px;text-align:left">Comentarios</th></tr>' + m.nacDetalle.map(function (x) { return '<tr style="border-bottom:1px solid #e2e6ec"><td style="padding:5px;font-weight:600">' + eh(x.madre) + '</td><td style="padding:5px">' + eh(x.dx) + '</td><td style="padding:5px;text-align:center">' + eh(x.tipo) + '</td><td style="padding:5px;white-space:pre-line">' + eh(x.rn) + '</td><td style="padding:5px">' + eh(x.obs) + '</td></tr>'; }).join("") + '</table>':"") : "";
     return '<div style="font-family:\'Helvetica Neue\',Arial,sans-serif;color:#1f2733;background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.1)">'+
       '<div style="text-align:center;border-bottom:2px solid #1A4D8F;padding-bottom:8px;margin-bottom:10px">'+
         '<div style="font-size:17px;font-weight:800;color:#1A4D8F;letter-spacing:.5px">INFORME DE ENTREGA DE TURNO</div>'+
         '<div style="font-size:11px;color:#5F6368">Servicio de Obstetricia y Ginecología — HRA</div>'+
         '<div style="font-size:12.5px;margin-top:4px">Turno 24 h · '+eh(m.fecha)+'  |  '+eh(m.saliente||"—")+' → '+eh(m.entrante||"—")+'</div></div>'+
       '<h3 style="color:#1A4D8F;font-size:13px;margin:10px 0 4px">Resumen ejecutivo</h3>'+
-      '<p style="font-size:12.5px;line-height:1.5;margin:0">'+eh(m.resumen)+'</p>'+
+      '<p style="font-size:12.5px;line-height:1.5;margin:0 0 6px">'+eh(m.resumen)+'</p>'+
+      '<p style="font-size:12.5px;line-height:1.5;margin:0">'+eh(m.analisis)+'</p>'+
       '<h3 style="color:#1A4D8F;font-size:13px;margin:12px 0 4px">Actividad del turno</h3>'+
       '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">'+kpi+'</div>'+
       '<div style="font-size:10.5px;color:#5F6368;margin-bottom:2px">Nacimientos por tipo</div>'+bar("Vaginales",k.vag)+bar("Cesáreas",k.ces)+bar("Fórceps",k.forc)+
+      nacTbl+
       '<h3 style="color:#1A4D8F;font-size:13px;margin:12px 0 4px">Novedades del turno</h3>'+nov+
       '<h3 style="color:#1A4D8F;font-size:13px;margin:12px 0 4px">Pendientes para el turno entrante</h3>'+pend+
       '<div style="display:flex;gap:20px;margin-top:22px">'+firma("Jefe de Turno Saliente",m.saliente,m.rutSaliente)+firma("Jefe de Turno Entrante",m.entrante,m.rutEntrante)+'</div>'+
@@ -628,6 +804,16 @@
     // Compatibilidad: opts.signature (antigua, 1 firma) se mapea a saliente.
     var fs = prepSig(opts.firmaSaliente || opts.signature);
     var fe = prepSig(opts.firmaEntrante);
+    // Gráficos (hasta 3) en franja con bordes
+    var graficos = [];
+    var listaG = opts.graficos || (opts.grafico ? [opts.grafico] : []);
+    listaG.slice(0, 3).forEach(function (g, i) {
+      if (!g || !g.bytes) { graficos.push({ has: false, titulo: (g && g.titulo) || "", rId: "rId" + (3 + i) }); return; }
+      var gb = (typeof g.bytes === "string") ? b64ToBytes(g.bytes) : g.bytes;
+      var gw = g.w || 600, gh = g.h || 420;
+      var cx = Math.round(2.05 * 914400), cy = Math.round(cx * (gh / gw));
+      graficos.push({ has: true, bytes: gb, extent: { cx: cx, cy: cy }, titulo: g.titulo || "", rId: "rId" + (3 + i) });
+    });
 
     var contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
@@ -642,28 +828,113 @@
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
       "</Relationships>";
 
-    var docXml = buildDocumentXml(turno, { saliente: fs, entrante: fe });
+    var docXml = buildDocumentXml(turno, { saliente: fs, entrante: fe, graficos: graficos });
 
     files.push({ name: "[Content_Types].xml", data: strBytes(contentTypes) });
     files.push({ name: "_rels/.rels", data: strBytes(rootRels) });
     files.push({ name: "word/document.xml", data: strBytes(docXml) });
 
-    if (fs.has || fe.has) {
+    var hayG = graficos.some(function (g) { return g.has; });
+    if (fs.has || fe.has || hayG) {
       var rels = [];
       if (fs.has) rels.push('<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/firma-saliente.png"/>');
       if (fe.has) rels.push('<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/firma-entrante.png"/>');
+      graficos.forEach(function (g, i) {
+        if (g.has) rels.push('<Relationship Id="' + g.rId + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/grafico' + (i + 1) + '.png"/>');
+      });
       var docRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
         rels.join("") + "</Relationships>";
       files.push({ name: "word/_rels/document.xml.rels", data: strBytes(docRels) });
       if (fs.has) files.push({ name: "word/media/firma-saliente.png", data: fs.bytes });
       if (fe.has) files.push({ name: "word/media/firma-entrante.png", data: fe.bytes });
+      graficos.forEach(function (g, i) { if (g.has) files.push({ name: "word/media/grafico" + (i + 1) + ".png", data: g.bytes }); });
     }
 
     return zipStore(files);
   }
 
-  var api = { buildDocx: buildDocx, buildInformeHtml: buildInformeHtml, computeInforme: computeInforme, fmtIdent: fmtIdent, crc32: crc32, zipStore: zipStore };
+  // ---- Informe médico-legal (privado, documento aparte) --------------------
+  function buildMedLegalDocx(caso, opts) {
+    opts = opts || {}; caso = caso || {};
+    var fsig = prepSig(opts.firmaSaliente);
+    var body = [];
+    body.push(para("REGISTRO MÉDICO-LEGAL DEL CASO", { bold:true, caps:true, sz:26, color:"1A4D8F", align:"center", spaceAfter:0 }));
+    body.push(para("Documento privado de respaldo profesional — no forma parte de la entrega de turno", { sz:15, align:"center", color:"5F6368", spaceAfter:120 }));
+
+    body.push(table([2600,3400,2400,2400],[
+      headerRow(["Fecha del evento","Paciente","N° Ficha","N° DAU"]),
+      [{text:caso.fecha||"",sz:18},{text:caso.paciente||"",sz:18,bold:true},{text:caso.ficha||"",sz:18},{text:caso.dau||"",sz:18}]
+    ]));
+    body.push(table([2600,8200],[
+      headerRow(["Profesional a cargo","Otros profesionales presentes"]),
+      [{text:caso.profesional||"",sz:18,bold:true},{text:caso.equipo||"",sz:18}]
+    ]));
+
+    var secs = [
+      ["Motivo de consulta y contexto", caso.motivo],
+      ["Antecedentes relevantes", caso.antecedentes],
+      ["Hallazgos al evaluar (examen y exámenes)", caso.hallazgos],
+      ["Diagnóstico planteado", caso.diagnostico],
+      ["Decisión adoptada y su fundamento", caso.decision],
+      ["Información entregada a la paciente y/o familia · consentimiento", caso.consentimiento],
+      ["Procedimiento realizado", caso.procedimiento],
+      ["Complicaciones e incidencias", caso.complicaciones],
+      ["Estado de la paciente al traspaso / cierre", caso.estadoFinal],
+      ["Derivaciones, interconsultas y pendientes", caso.derivaciones],
+      ["Observaciones adicionales", caso.observaciones]
+    ];
+    secs.forEach(function (s) {
+      if (!s[1] || !String(s[1]).trim()) return;
+      body.push(sectionHeading(s[0]));
+      body.push(para(s[1], { sz:18, spaceAfter:60 }));
+    });
+
+    var cron = (caso.cronologia || []).filter(function (c) { return (c.hora && c.hora.trim()) || (c.evento && c.evento.trim()); });
+    if (cron.length) {
+      body.push(sectionHeading("Cronología del caso"));
+      var rows = [headerRow(["Hora","Evento / acción / decisión"])];
+      cron.forEach(function (c) { rows.push([{text:c.hora||"",sz:17,align:"center"},{text:c.evento||"",sz:17}]); });
+      body.push(table([1500,9300], rows));
+    }
+
+    body.push(para("", { spaceBefore:200 }));
+    body.push(signatureTable([
+      { has:fsig.has, extent:fsig.extent, rId:"rId1", name:"firmaProfesional", docPrId:201,
+        label:"Profesional responsable del registro", nombre:caso.profesional||"", rut:caso.rut||"" },
+      { has:false, label:"Fecha y hora del registro", nombre:(caso.registradoEn||""), rut:"" }
+    ]));
+    body.push(para("Documento de respaldo profesional. Registro privado del autor; no sustituye la ficha clínica institucional.",
+      { align:"center", sz:14, color:"5F6368", spaceBefore:100 }));
+
+    var sect = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr>';
+    var docXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">' +
+      "<w:body>" + body.join("") + sect + "</w:body></w:document>";
+
+    var contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>';
+    var rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>';
+    var files = [
+      { name:"[Content_Types].xml", data:strBytes(contentTypes) },
+      { name:"_rels/.rels", data:strBytes(rootRels) },
+      { name:"word/document.xml", data:strBytes(docXml) }
+    ];
+    if (fsig.has) {
+      files.push({ name:"word/_rels/document.xml.rels", data:strBytes('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/firma.png"/></Relationships>') });
+      files.push({ name:"word/media/firma.png", data:fsig.bytes });
+    }
+    return zipStore(files);
+  }
+
+  var api = { buildDocx: buildDocx, buildMedLegalDocx: buildMedLegalDocx, buildInformeHtml: buildInformeHtml, computeInforme: computeInforme, fmtIdent: fmtIdent, fmtResultado: fmtResultado, fmtRN: fmtRN, crc32: crc32, zipStore: zipStore };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.DocxCore = api;
 })(typeof self !== "undefined" ? self : this);
@@ -788,8 +1059,8 @@
       t.ingresos, function (x) { return [x.cama || "", fmtIdent(x.ident), x.diagnosticos || "", x.manejo || "", x.comentarios || ""]; }, true);
 
     section("VI. Nacimientos (partos atendidos)",
-      ["Identificación (madre)", "Diagnóstico", "Tipo de parto", "Información del recién nacido", "Comentarios"],
-      nac, function (x) { return [(x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.diagnostico || "", x.tipoParto || "", x.infoRN || "", x.comentarios || ""]; }, true);
+      ["Identificación (madre)", "Diagnóstico", "Tipo de parto", "Resultado", "Comentarios"],
+      nac, function (x) { return [(x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.diagnostico || "", x.tipoParto || "", DC.fmtResultado(x), x.comentarios || ""]; }, true);
 
     section("VII. Peritajes Médico-Legales",
       ["Nombre del paciente", "N° DAU", "Autorizada (Fiscalía)", "Realizada"],
@@ -915,8 +1186,8 @@
                { k: "ficha", label: "N° Ficha (madre)", type: "short" },
                { k: "diagnostico", label: "Diagnóstico", type: "area" },
                { k: "tipoParto", label: "Tipo de parto", type: "select", options: ["Vaginal", "Cesárea", "Fórceps"] },
-               { k: "infoRN", label: "Información RN", type: "area" },
-               { k: "comentarios", label: "Comentarios", type: "area" }] },
+               { k: "resultado", label: "Resultado", type: "rnset" },
+               { k: "comentarios", label: "Comentarios del procedimiento", type: "area", ph: "Ej.: esterilización quirúrgica, hemorragia post-parto, histerectomía obstétrica, desgarro y reparación, retención de placenta…" }] },
     { key: "peritajes", icon: "", title: "Peritajes médico-legales",
       fields: [{ k: "nombre", label: "Nombre del paciente", type: "text" },
                { k: "dau", label: "N° DAU (Dato de Atención de Urgencia)", type: "text" },
@@ -934,7 +1205,7 @@
     SECTIONS.forEach(function (s) { t[s.key] = []; });
     return t;
   }
-  var state = { turno: emptyTurno(), firmaSaliente: null, firmaEntrante: null, history: [], dominga: [] };
+  var state = { turno: emptyTurno(), firmaSaliente: null, firmaEntrante: null, history: [], dominga: [], medlegal: [] };
   var storageOK = true;
 
   function todayISO() { var d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
@@ -997,7 +1268,7 @@
   function identSummary(id) { return (window.DocxCore ? DocxCore.fmtIdent(id) : (id && id.nombre) || ""); }
 
   function entrySummary(secKey, item) {
-    if (secKey === "nacimientos") return { ttl: item.nombre || "(sin nombre)", meta: [item.tipoParto, item.diagnostico].filter(Boolean).join(" · ") };
+    if (secKey === "nacimientos") return { ttl: item.nombre || "(sin nombre)", meta: [item.tipoParto, DocxCore.fmtResultado(item)].filter(Boolean).join(" · ") };
     if (secKey === "peritajes") {
       var est = [];
       if (item.autorizada) est.push("Autorizada");
@@ -1154,8 +1425,13 @@
       } else if (f.type === "select") {
         var opts = f.options.map(function (o) { return '<option' + (item[f.k] === o ? " selected" : "") + '>' + o + '</option>'; }).join("");
         wrap.innerHTML = '<label class="f">' + f.label + '</label><select data-f="' + f.k + '"><option value=""></option>' + opts + '</select>';
+      } else if (f.type === "rnset") {
+        wrap.innerHTML = '<label class="f">' + f.label + '</label><div id="rnsetHost"></div>';
+        form.appendChild(wrap);
+        renderRnset(item.resultado || migrarResultado(item));
+        return;
       } else if (f.type === "area") {
-        wrap.innerHTML = '<label class="f">' + f.label + '</label><textarea data-f="' + f.k + '">' + escapeHtml(item[f.k] || "") + '</textarea>';
+        wrap.innerHTML = '<label class="f">' + f.label + '</label><textarea data-f="' + f.k + '"' + (f.ph ? ' placeholder="' + attr(f.ph) + '"' : '') + '>' + escapeHtml(item[f.k] || "") + '</textarea>';
       } else if (f.type === "check") {
         wrap.innerHTML = '<label style="display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;color:var(--tinta)">' +
           '<input type="checkbox" data-f="' + f.k + '" style="width:22px;height:22px"' + (item[f.k] ? " checked" : "") + '> ' + f.label + '</label>';
@@ -1169,6 +1445,74 @@
     $("#mDelete").style.display = idx >= 0 ? "" : "none";
     $("#modal").classList.add("show");
   }
+  // ---- Bloque "Resultado" de Nacimientos (único/múltiple + RN1..RN3) ----
+  function rnVacio() { return { vitalidad: "Vivo", madurez: "Término", semanas: "", sexo: "ND", peso: "", apgar: "", obs: "" }; }
+  function migrarResultado(item) {
+    // Compatibilidad con registros antiguos (rnTipo/rnSemanas/rnPeso/rnApgar/infoRN)
+    var r = rnVacio();
+    if (item.rnTipo) r.madurez = item.rnTipo;
+    if (item.rnSemanas) r.semanas = item.rnSemanas;
+    if (item.rnPeso) r.peso = item.rnPeso;
+    if (item.rnApgar) r.apgar = item.rnApgar;
+    if (item.infoRN) r.obs = item.infoRN;
+    return { tipo: "Único", orden: 1, rns: [r] };
+  }
+  var rnsetState = null;
+  function renderRnset(res) {
+    rnsetState = res && res.rns ? JSON.parse(JSON.stringify(res)) : { tipo: "Único", orden: 1, rns: [rnVacio()] };
+    if (rnsetState.tipo !== "Múltiple") { rnsetState.orden = 1; }
+    var n = rnsetState.tipo === "Múltiple" ? Math.max(2, Number(rnsetState.orden) || 2) : 1;
+    while (rnsetState.rns.length < n) rnsetState.rns.push(rnVacio());
+    rnsetState.rns = rnsetState.rns.slice(0, n);
+    var host = $("#rnsetHost"); if (!host) return;
+    var sel = function (name, val, opts) {
+      return '<select data-rnc="' + name + '">' + opts.map(function (o) { return '<option' + (val === o ? " selected" : "") + '>' + o + '</option>'; }).join("") + '</select>';
+    };
+    var h = '<div class="row">' +
+      '<div><label class="f">Gestación</label>' + sel("tipo", rnsetState.tipo, ["Único", "Múltiple"]) + '</div>' +
+      (rnsetState.tipo === "Múltiple" ? '<div class="short"><label class="f">Orden</label>' + sel("orden", String(n), ["2", "3"]) + '</div>' : '') +
+      '</div>';
+    rnsetState.rns.forEach(function (r, i) {
+      h += '<div style="border:1px solid var(--linea);border-radius:10px;padding:10px;margin-top:10px;background:#fbfcfe">' +
+        '<div style="font-weight:700;color:var(--azul);font-size:13px;margin-bottom:6px">RN' + (i + 1) + '</div>' +
+        '<div class="row">' +
+        '<div><label class="f">Condición</label><select data-rn="' + i + '.vitalidad">' + ["Vivo", "Óbito"].map(function (o) { return '<option' + (r.vitalidad === o ? " selected" : "") + '>' + o + '</option>'; }).join("") + '</select></div>' +
+        '<div><label class="f">Madurez</label><select data-rn="' + i + '.madurez">' + ["Término", "Pretérmino"].map(function (o) { return '<option' + (r.madurez === o ? " selected" : "") + '>' + o + '</option>'; }).join("") + '</select></div>' +
+        '</div>' +
+        '<div class="row" style="margin-top:8px">' +
+        '<div class="short"><label class="f">Semanas</label><input type="text" inputmode="decimal" data-rn="' + i + '.semanas" value="' + attr(r.semanas) + '" placeholder="38"></div>' +
+        '<div><label class="f">Sexo</label><select data-rn="' + i + '.sexo">' + ["Masculino", "Femenino", "ND"].map(function (o) { return '<option' + (r.sexo === o ? " selected" : "") + '>' + o + '</option>'; }).join("") + '</select></div>' +
+        '</div>' +
+        '<div class="row" style="margin-top:8px">' +
+        '<div><label class="f">Peso (g)</label><input type="text" inputmode="numeric" data-rn="' + i + '.peso" value="' + attr(r.peso) + '" placeholder="3180"></div>' +
+        '<div><label class="f">APGAR</label><input type="text" data-rn="' + i + '.apgar" value="' + attr(r.apgar) + '" placeholder="9/9/9"></div>' +
+        '</div>' +
+        '<div style="margin-top:8px"><label class="f">Observaciones del RN</label><textarea data-rn="' + i + '.obs" placeholder="Malformaciones, circular cervical, etc.">' + escapeHtml(r.obs || "") + '</textarea></div>' +
+        '</div>';
+    });
+    host.innerHTML = h;
+    $$("#rnsetHost [data-rnc]").forEach(function (el) {
+      el.addEventListener("change", function () {
+        var cur = leerRnset();
+        cur[el.getAttribute("data-rnc")] = el.value;
+        renderRnset(cur);
+      });
+    });
+  }
+  function leerRnset() {
+    if (!rnsetState) return { tipo: "Único", orden: 1, rns: [rnVacio()] };
+    var res = JSON.parse(JSON.stringify(rnsetState));
+    $$("#rnsetHost [data-rnc]").forEach(function (el) { res[el.getAttribute("data-rnc")] = el.value; });
+    $$("#rnsetHost [data-rn]").forEach(function (el) {
+      var p = el.getAttribute("data-rn").split("."), i = Number(p[0]);
+      if (!res.rns[i]) res.rns[i] = rnVacio();
+      res.rns[i][p[1]] = el.value.trim();
+    });
+    if (res.tipo !== "Múltiple") { res.orden = 1; res.rns = res.rns.slice(0, 1); }
+    else { var n = Math.max(2, Number(res.orden) || 2); res.orden = n; res.rns = res.rns.slice(0, n); }
+    return res;
+  }
+
   function attr(v) { return String(v == null ? "" : v).replace(/"/g, "&quot;"); }
   function closeModal() { $("#modal").classList.remove("show"); }
 
@@ -1190,6 +1534,7 @@
       else obj[key] = val;
     });
     var arr = state.turno[editCtx.sec];
+    if ($("#rnsetHost")) { obj.resultado = leerRnset(); delete obj.rnTipo; delete obj.rnSemanas; delete obj.rnPeso; delete obj.rnApgar; delete obj.infoRN; }
     if (editCtx.idx >= 0) arr[editCtx.idx] = obj; else arr.push(obj);
     closeModal(); renderSummary(); renderSections(); saveSoon();
   });
@@ -1226,7 +1571,52 @@
   }
   var MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   var MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-  function docxBlobOf(turno) { return new Blob([DocxCore.buildDocx(turno, firmaOpts())], { type: MIME_DOCX }); }
+  // Gráfico de barras verticales (panel individual de la franja)
+  function panelBarras(data, colores) {
+    var W = 600, H = 420, dpr = 2;
+    var cv = document.createElement("canvas"); cv.width = W * dpr; cv.height = H * dpr;
+    var ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+    var maxV = Math.max(1, Math.max.apply(null, data.map(function (d) { return d[1]; })));
+    var padL = 20, padR = 20, padT = 30, baseY = H - 78;
+    var n = data.length, slot = (W - padL - padR) / n, bw = Math.min(90, slot * 0.62);
+    // eje
+    ctx.strokeStyle = "#c7ccd4"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(padL, baseY + 0.5); ctx.lineTo(W - padR, baseY + 0.5); ctx.stroke();
+    ctx.textAlign = "center";
+    data.forEach(function (d, i) {
+      var cx = padL + slot * i + slot / 2;
+      var h = Math.round(d[1] / maxV * (baseY - padT));
+      if (d[1] === 0) h = 3;
+      ctx.fillStyle = (colores && colores[i]) || "#1A4D8F";
+      ctx.fillRect(cx - bw / 2, baseY - h, bw, h);
+      ctx.fillStyle = "#1f2733"; ctx.font = "700 30px 'Helvetica Neue',Arial,sans-serif";
+      ctx.fillText(String(d[1]), cx, baseY - h - 10);
+      ctx.fillStyle = "#5F6368"; ctx.font = "500 24px 'Helvetica Neue',Arial,sans-serif";
+      var etiqueta = String(d[0]).split(" ");
+      etiqueta.forEach(function (linea, j) { ctx.fillText(linea, cx, baseY + 30 + j * 26); });
+    });
+    return { data: cv.toDataURL("image/png"), w: cv.width, h: cv.height };
+  }
+  function graficosTurno(turno) {
+    var nac = turno.nacimientos || [];
+    function c(pfx) { return nac.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf(pfx) === 0; }).length; }
+    var g1 = panelBarras([["Vaginal", c("vag")], ["Cesárea", c("ces")], ["Fórceps", c("f")]]);
+    var g2 = panelBarras([["Nacim.", nac.length], ["Interv.", (turno.intervenciones || []).length],
+                          ["Ingresos", (turno.ingresos || []).length], ["Perit.", (turno.peritajes || []).length]]);
+    var g3 = panelBarras([["Preparto", (turno.partoIntegral || []).length], ["Observ.", (turno.observacion || []).length],
+                          ["Otras unid.", (turno.otrasUnidades || []).length]]);
+    return [
+      { bytes: g1.data, w: g1.w, h: g1.h, titulo: "Nacimientos por tipo" },
+      { bytes: g2.data, w: g2.w, h: g2.h, titulo: "Actividad clínica" },
+      { bytes: g3.data, w: g3.w, h: g3.h, titulo: "Pacientes activos al cierre" }
+    ];
+  }
+  function docxBlobOf(turno) {
+    var opts = firmaOpts();
+    try { opts.graficos = graficosTurno(turno); } catch (e) { /* sin canvas: usa barras de respaldo */ }
+    return new Blob([DocxCore.buildDocx(turno, opts)], { type: MIME_DOCX });
+  }
   function xlsxBlobOf(turno) { return new Blob([XlsxCore.buildXlsx(turno)], { type: MIME_XLSX }); }
   function docxNameOf(turno) { return "Entrega de Turno " + (turno.meta.fecha || todayISO()) + ".docx"; }
   function xlsxNameOf(turno) { return "Entrega de Turno " + (turno.meta.fecha || todayISO()) + ".xlsx"; }
@@ -1404,7 +1794,7 @@
       ["III. Otras unidades", t.otrasUnidades, ["Cama", "Servicio", "Identificación", "Diagnóstico", "Condición"], function (x) { return [x.cama || "", x.servicio || "", identSummary(x.ident), x.diagnosticos || "", x.condicion || ""]; }],
       ["IV. Intervenciones", t.intervenciones, ["Identificación", "Diagnóstico", "Intervención", "Comentarios"], function (x) { return [identSummary(x.ident), x.diagnostico || "", x.intervencion || "", x.comentarios || ""]; }],
       ["V. Ingresos", t.ingresos, ["Cama", "Identificación", "Diagnósticos", "Manejo", "Comentarios"], function (x) { return [x.cama || "", identSummary(x.ident), x.diagnosticos || "", x.manejo || "", x.comentarios || ""]; }],
-      ["VI. Nacimientos", t.nacimientos, ["Identificación", "Diagnóstico", "Tipo", "Info RN", "Comentarios"], function (x) { return [(x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.diagnostico || "", x.tipoParto || "", x.infoRN || "", x.comentarios || ""]; }],
+      ["VI. Nacimientos", t.nacimientos, ["Identificación", "Diagnóstico", "Tipo", "Resultado", "Comentarios"], function (x) { return [(x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.diagnostico || "", x.tipoParto || "", DocxCore.fmtResultado(x), x.comentarios || ""]; }],
       ["VII. Peritajes", t.peritajes, ["Nombre", "DAU", "Autorizada", "Realizada"], function (x) { return [x.nombre || "", x.dau || "", x.autorizada ? "Sí" : "—", x.realizada ? "Sí" : "—"]; }]
     ];
     var h = '<div style="font-family:\'Helvetica Neue\',Arial,sans-serif;font-size:12px;background:#fff;padding:12px;border-radius:8px">';
@@ -1429,6 +1819,117 @@
     show("#scrPreview");
   }
 
+  /* ---------- Módulo médico-legal (privado) ---------- */
+  var ML_CAMPOS = [
+    { k: "fecha", label: "Fecha del evento", type: "date" },
+    { k: "paciente", label: "Paciente", type: "text" },
+    { k: "ficha", label: "N° Ficha", type: "short" },
+    { k: "dau", label: "N° DAU", type: "short" },
+    { k: "profesional", label: "Profesional a cargo", type: "text" },
+    { k: "rut", label: "RUT del profesional", type: "short" },
+    { k: "equipo", label: "Otros profesionales presentes", type: "area", ph: "Matrona, anestesista, neonatólogo, internos…" },
+    { k: "motivo", label: "Motivo de consulta y contexto", type: "area" },
+    { k: "antecedentes", label: "Antecedentes relevantes", type: "area" },
+    { k: "hallazgos", label: "Hallazgos al evaluar (examen y exámenes)", type: "area" },
+    { k: "diagnostico", label: "Diagnóstico planteado", type: "area" },
+    { k: "decision", label: "Decisión adoptada y su fundamento", type: "area", ph: "Qué se decidió y por qué; alternativas consideradas" },
+    { k: "consentimiento", label: "Información a paciente/familia y consentimiento", type: "area", ph: "A quién se informó, qué se informó, hora, consentimiento firmado" },
+    { k: "procedimiento", label: "Procedimiento realizado", type: "area" },
+    { k: "complicaciones", label: "Complicaciones e incidencias", type: "area" },
+    { k: "estadoFinal", label: "Estado de la paciente al traspaso / cierre", type: "area" },
+    { k: "derivaciones", label: "Derivaciones, interconsultas y pendientes", type: "area" },
+    { k: "observaciones", label: "Observaciones adicionales", type: "area" }
+  ];
+  var mlEditIdx = -1, mlCron = [];
+  function updateMlBadge() { var b = $("#mlBadge"); if (!b) return; var n = state.medlegal.length; b.textContent = n; b.className = "badge" + (n ? "" : " zero"); }
+  function renderMedLegal() {
+    var host = $("#mlList");
+    if (!state.medlegal.length) { host.innerHTML = '<div class="empty">Sin casos registrados.</div>'; return; }
+    host.innerHTML = "";
+    state.medlegal.slice().sort(function (a, b) { return (b.fecha || "").localeCompare(a.fecha || ""); }).forEach(function (c) {
+      var el = document.createElement("div"); el.className = "entry";
+      el.innerHTML = '<div class="ttl">' + escapeHtml(c.paciente || "(sin paciente)") + '</div>' +
+        '<div class="meta">' + escapeHtml([isoToDMY(c.fecha), c.ficha ? "Ficha " + c.ficha : "", c.diagnostico || ""].filter(Boolean).join(" · ")) + '</div>' +
+        '<div class="acts"><button class="btn sm ghost" data-e>Abrir</button><button class="btn sm pri" data-w>Word</button></div>';
+      $("[data-e]", el).addEventListener("click", function () { openMedLegal(state.medlegal.indexOf(c)); });
+      $("[data-w]", el).addEventListener("click", function () { dl(mlBlob(c), mlName(c)); });
+      host.appendChild(el);
+    });
+  }
+  function mlBlob(c) {
+    var opts = {};
+    if (state.firmaSaliente) opts.firmaSaliente = { bytes: state.firmaSaliente.data, w: state.firmaSaliente.w, h: state.firmaSaliente.h };
+    return new Blob([DocxCore.buildMedLegalDocx(c, opts)], { type: MIME_DOCX });
+  }
+  function mlName(c) { return "Registro medico-legal " + (c.fecha || todayISO()) + " - " + (c.paciente || "caso") + ".docx"; }
+  function renderCron() {
+    var host = $("#mlCron"); host.innerHTML = "";
+    mlCron.forEach(function (r, i) {
+      var d = document.createElement("div"); d.className = "row"; d.style.marginBottom = "8px";
+      d.innerHTML = '<input class="short" type="time" data-cron="' + i + '.hora" value="' + attr(r.hora) + '">' +
+        '<input type="text" data-cron="' + i + '.evento" value="' + attr(r.evento) + '" placeholder="Evento, acción o decisión">' +
+        '<button class="btn sm danger" data-del="' + i + '" style="flex:0 0 auto">X</button>';
+      $("[data-del]", d).addEventListener("click", function () { leerCron(); mlCron.splice(i, 1); renderCron(); });
+      host.appendChild(d);
+    });
+  }
+  function leerCron() {
+    $$("#mlCron [data-cron]").forEach(function (el) {
+      var p = el.getAttribute("data-cron").split("."), i = Number(p[0]);
+      if (!mlCron[i]) mlCron[i] = { hora: "", evento: "" };
+      mlCron[i][p[1]] = el.value;
+    });
+    return mlCron;
+  }
+  function openMedLegal(idx) {
+    mlEditIdx = idx;
+    var c = idx >= 0 ? state.medlegal[idx] : { fecha: todayISO(), profesional: state.turno.meta.nombreSaliente || "", rut: state.turno.meta.rutSaliente || "", cronologia: [] };
+    $("#mlEditTitle").textContent = idx >= 0 ? "Editar caso médico-legal" : "Nuevo caso médico-legal";
+    var form = $("#mlForm"); form.innerHTML = "";
+    ML_CAMPOS.forEach(function (f) {
+      var w = document.createElement("div"); w.className = "fld"; w.style.marginBottom = "12px";
+      if (f.type === "area") w.innerHTML = '<label class="f">' + f.label + '</label><textarea data-ml="' + f.k + '"' + (f.ph ? ' placeholder="' + attr(f.ph) + '"' : '') + '>' + escapeHtml(c[f.k] || "") + '</textarea>';
+      else w.innerHTML = '<label class="f">' + f.label + '</label><input type="' + (f.type === "date" ? "date" : "text") + '" data-ml="' + f.k + '" value="' + attr(c[f.k]) + '">';
+      form.appendChild(w);
+    });
+    mlCron = JSON.parse(JSON.stringify(c.cronologia || []));
+    if (!mlCron.length) mlCron.push({ hora: "", evento: "" });
+    renderCron();
+    $("#mlDelete").style.display = idx >= 0 ? "" : "none";
+    show("#scrMedLegalEdit");
+  }
+  function recolectarML() {
+    var c = mlEditIdx >= 0 ? state.medlegal[mlEditIdx] : { id: Date.now() };
+    $$("#mlForm [data-ml]").forEach(function (el) { c[el.getAttribute("data-ml")] = el.value.trim(); });
+    c.cronologia = leerCron().filter(function (r) { return (r.hora || "").trim() || (r.evento || "").trim(); });
+    c.registradoEn = new Date().toLocaleString("es-CL");
+    return c;
+  }
+  function guardarML() {
+    var c = recolectarML();
+    if (mlEditIdx < 0) state.medlegal.push(c);
+    kvSet("medlegal", state.medlegal); updateMlBadge();
+    return c;
+  }
+  $("#btnMedLegal").addEventListener("click", function () { renderMedLegal(); show("#scrMedLegal"); });
+  $("#mlBack").addEventListener("click", function () { show("#scrMain"); });
+  $("#mlEditBack").addEventListener("click", function () { renderMedLegal(); show("#scrMedLegal"); });
+  $("#mlNuevo").addEventListener("click", function () { openMedLegal(-1); });
+  $("#mlAddCron").addEventListener("click", function () { leerCron(); mlCron.push({ hora: "", evento: "" }); renderCron(); });
+  $("#mlSave").addEventListener("click", function () { guardarML(); renderMedLegal(); show("#scrMedLegal"); });
+  $("#mlWord").addEventListener("click", function () { var c = guardarML(); dl(mlBlob(c), mlName(c)); });
+  $("#mlSend").addEventListener("click", function () {
+    var c = guardarML(); var f = new File([mlBlob(c)], mlName(c), { type: MIME_DOCX });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f], title: mlName(c) }).catch(function () {});
+    else dl(mlBlob(c), mlName(c));
+  });
+  $("#mlDelete").addEventListener("click", function () {
+    if (mlEditIdx >= 0 && confirm("¿Eliminar este registro médico-legal?\n\nNo se puede deshacer.")) {
+      state.medlegal.splice(mlEditIdx, 1); kvSet("medlegal", state.medlegal); updateMlBadge();
+      renderMedLegal(); show("#scrMedLegal");
+    }
+  });
+
   /* ---------- navegación ---------- */
   function show(scr) {
     $$(".screen").forEach(function (s) { s.classList.remove("active"); });
@@ -1450,7 +1951,7 @@
   $("#btnEnviar").addEventListener("click", function () { shareTurno(state.turno); });
   $("#btnCerrar").addEventListener("click", cerrarTurno);
 
-  function refreshAll() { bindMeta(); updateSub(); renderSummary(); renderSections(); updateDomBadge(); }
+  function refreshAll() { bindMeta(); updateSub(); renderSummary(); renderSections(); updateDomBadge(); updateMlBadge(); }
 
   /* ---------- arranque ---------- */
   (async function init() {
@@ -1463,6 +1964,7 @@
       if (!state.firmaSaliente) { var old = await kvGet("signature"); if (old) { state.firmaSaliente = old; kvSet("firmaSaliente", old); } }
       var his = await kvGet("history"); if (his) state.history = his;
       var dom = await kvGet("dominga"); if (dom) state.dominga = dom;
+      var ml = await kvGet("medlegal"); if (ml) state.medlegal = ml;
     }
     if (!storageOK) $("#storeBanner").style.display = "block";
     refreshAll();
