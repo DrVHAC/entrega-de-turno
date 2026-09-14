@@ -443,6 +443,9 @@
       ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(function (s) {
         return '<w:' + s + ' w:val="single" w:sz="4" w:space="0" w:color="9AA0A6"/>';
       }).join("") + "</w:tblBorders>";
+    var cellMar = '<w:tblCellMar>' +
+      '<w:top w:w="60" w:type="dxa"/><w:left w:w="110" w:type="dxa"/>' +
+      '<w:bottom w:w="60" w:type="dxa"/><w:right w:w="110" w:type="dxa"/></w:tblCellMar>';
     var grid = "<w:tblGrid>" + colWidths.map(function (w) { return '<w:gridCol w:w="' + w + '"/>'; }).join("") + "</w:tblGrid>";
     var trs = rows.map(function (r) {
       var tcs = r.map(function (c, i) {
@@ -451,11 +454,126 @@
       return "<w:tr>" + tcs + "</w:tr>";
     }).join("");
     return "<w:tbl><w:tblPr><w:tblW w:w=\"" + totalW + "\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/>" +
-      borders + "</w:tblPr>" + grid + trs + "</w:tbl>";
+      borders + cellMar + "</w:tblPr>" + grid + trs + "</w:tbl>";
   }
 
   // ---- render de identificación -------------------------------------------
   // Resultado obstétrico: único/múltiple + RN1..RN3
+  // ---- Score de Bishop y TV estandarizado --------------------------------
+  var BISHOP_OPC = {
+    dilatacion: [["0 cm", 0], ["1-2 cm", 1], ["3-4 cm", 2], ["5-6 cm", 3]],
+    borramiento: [["0-30%", 0], ["40-50%", 1], ["60-70%", 2], ["≥80%", 3]],
+    estacion: [["-3", 0], ["-2", 1], ["-1 / 0", 2], ["+1 / +2", 3]],
+    consistencia: [["Firme", 0], ["Media", 1], ["Blanda", 2]],
+    posicion: [["Posterior", 0], ["Media", 1], ["Anterior", 2]]
+  };
+  function bishopPuntos(b) {
+    if (!b) return null;
+    var tot = 0, algo = false;
+    ["dilatacion", "borramiento", "estacion", "consistencia", "posicion"].forEach(function (k) {
+      var v = b[k]; if (!v) return;
+      var o = BISHOP_OPC[k].filter(function (p) { return p[0] === v; })[0];
+      if (o) { tot += o[1]; algo = true; }
+    });
+    return algo ? tot : null;
+  }
+  function bishopInterpretacion(score, contexto) {
+    if (score == null) return "";
+    if (contexto === "Pretérmino") {
+      // En APP/PTD el Bishop mide cambios cervicales: a mayor puntaje, mayor riesgo de parto inminente
+      if (score >= 6) return "cambios cervicales significativos — riesgo de parto prematuro inminente";
+      if (score >= 4) return "cambios cervicales incipientes — vigilancia estrecha";
+      return "sin cambios cervicales significativos";
+    }
+    if (contexto === "Término") {
+      if (score >= 8) return "cuello favorable para inducción/conducción";
+      if (score >= 6) return "intermedio — considerar maduración cervical";
+      return "cuello desfavorable — requiere maduración cervical";
+    }
+    if (score >= 8) return "cuello favorable";
+    if (score >= 6) return "intermedio";
+    return "cuello desfavorable";
+  }
+  function fmtBishop(x) {
+    var b = x && x.bishop; if (!b) return "";
+    var du = "";
+    if (b.du) {
+      du = "DU: " + b.du + (b.duIntensidad ? " (" + b.duIntensidad.toLowerCase() + ")" : "");
+    }
+    var p = [];
+    if (b.dilatacion) p.push("dilatación " + b.dilatacion);
+    if (b.borramiento) p.push("borramiento " + b.borramiento);
+    if (b.consistencia) p.push("consistencia " + b.consistencia.toLowerCase());
+    if (b.posicion) p.push("posición " + b.posicion.toLowerCase());
+    if (b.estacion) p.push("De Lee " + b.estacion);
+    if (b.membranas) p.push("membranas " + b.membranas.toLowerCase());
+    var s = bishopPuntos(b);
+    var txt = p.length ? "TV: " + p.join(", ") : "";
+    if (du) txt = du + (txt ? " · " : "") + txt;
+    if (s != null) {
+      txt += (txt ? " · " : "") + "Bishop " + s;
+      if (b.contexto) txt += " (" + b.contexto.toLowerCase() + ")";
+      txt += ": " + bishopInterpretacion(s, b.contexto);
+    }
+    return txt;
+  }
+
+  // ---- MEFI (monitorización electrónica fetal intraparto) ------------------
+  var MEFI_OPC = {
+    basal: ["Normal (110-160)", "Bradicardia (<110)", "Taquicardia (>160)"],
+    variabilidad: ["Moderada (6-25)", "Mínima (<5)", "Ausente", "Marcada (>25)"],
+    aceleraciones: ["Presentes", "Ausentes"],
+    desaceleraciones: ["Ausentes", "Precoces", "Variables no recurrentes", "Variables recurrentes", "Tardías recurrentes", "Prolongadas"],
+    sinusoidal: ["No", "Sí"]
+  };
+  function mefiCategoria(m) {
+    if (!m || !m.basal || !m.variabilidad) return null;
+    var varAusente = m.variabilidad === "Ausente";
+    var desRec = m.desaceleraciones === "Tardías recurrentes" || m.desaceleraciones === "Variables recurrentes";
+    var brady = m.basal === "Bradicardia (<110)";
+    // Categoría III
+    if (m.sinusoidal === "Sí") return 3;
+    if (varAusente && (desRec || brady)) return 3;
+    // Categoría I
+    var basalNormal = m.basal === "Normal (110-160)";
+    var varModerada = m.variabilidad === "Moderada (6-25)";
+    var desOk = !m.desaceleraciones || m.desaceleraciones === "Ausentes" || m.desaceleraciones === "Precoces";
+    if (basalNormal && varModerada && desOk) return 1;
+    return 2;
+  }
+  function mefiTexto(cat) {
+    if (cat === 1) return "Categoría I — trazado normal, predictor de estado ácido-base fetal normal";
+    if (cat === 2) return "Categoría II — indeterminado, requiere vigilancia y medidas de reanimación intrauterina";
+    if (cat === 3) return "Categoría III — anormal, predictor de estado ácido-base fetal alterado; evaluar interrupción";
+    return "";
+  }
+  function fmtMefi(x) {
+    var m = x && x.mefi; if (!m) return "";
+    var p = [];
+    if (m.basal) p.push("FCF basal " + m.basal.toLowerCase());
+    if (m.variabilidad) p.push("variabilidad " + m.variabilidad.toLowerCase());
+    if (m.aceleraciones) p.push("aceleraciones " + m.aceleraciones.toLowerCase());
+    if (m.desaceleraciones) p.push("desaceleraciones " + m.desaceleraciones.toLowerCase());
+    if (m.sinusoidal === "Sí") p.push("patrón sinusoidal");
+    var cat = mefiCategoria(m);
+    var txt = p.length ? "MEFI: " + p.join(", ") : "";
+    if (cat) txt += (txt ? " · " : "MEFI: ") + mefiTexto(cat);
+    return txt;
+  }
+
+  // Evaluación del ingreso según rama (obstétrica / ginecológica)
+  function fmtEvalIngreso(x) {
+    if (!x) return "";
+    if (x.tipoIngreso === "Ginecológica") {
+      var g = [];
+      if (x.examenGin) g.push("Examen ginecológico: " + x.examenGin);
+      if (x.sangrado) g.push("Sangrado " + x.sangrado.toLowerCase());
+      if (x.dolorEVA) g.push("EVA " + x.dolorEVA + "/10");
+      return g.join(" · ");
+    }
+    return [fmtBishop(x), fmtMefi(x)].filter(Boolean).join(" · ");
+  }
+
   function fmtRNItem(r) {
     if (!r) return "";
     var p = [];
@@ -563,8 +681,8 @@
         return '<w:' + s + ' w:val="none" w:sz="0" w:space="0" w:color="auto"/>';
       }).join("") + '</w:tblBorders></w:tblPr>' +
       '<w:tblGrid><w:gridCol w:w="' + W + '"/><w:gridCol w:w="' + W + '"/></w:tblGrid>' +
-      "<w:tr>" + imgCell(cols[0]) + imgCell(cols[1]) + "</w:tr>" +
-      "<w:tr>" + lineCell(cols[0]) + lineCell(cols[1]) + "</w:tr></w:tbl>";
+      '<w:tr><w:trPr><w:cantSplit/></w:trPr>' + imgCell(cols[0]) + imgCell(cols[1]) + "</w:tr>" +
+      '<w:tr><w:trPr><w:cantSplit/></w:trPr>' + lineCell(cols[0]) + lineCell(cols[1]) + "</w:tr></w:tbl>";
   }
 
   // ---- modelo del informe ejecutivo ---------------------------------------
@@ -633,14 +751,13 @@
 
     var novedades=[];
     (t.intervenciones||[]).forEach(function(x){ novedades.push("Intervención — "+fmtIdent(x.ident)+(x.diagnostico?": "+x.diagnostico:"")+(x.intervencion?" → "+x.intervencion:"")+(x.comentarios?" ("+x.comentarios+")":"")); });
-    ing.forEach(function(x){ novedades.push("Ingreso — "+fmtIdent(x.ident)+(x.diagnosticos?": "+x.diagnosticos:"")+(x.manejo?" — "+x.manejo:"")); });
+    ing.forEach(function(x){ var ev=fmtEvalIngreso(x); novedades.push("Ingreso"+(x.tipoIngreso?" "+x.tipoIngreso.toLowerCase():"")+(x.cama?" (cama "+x.cama+")":"")+" — "+fmtIdent(x.ident)+(x.diagnosticos?": "+x.diagnosticos:"")+(ev?". "+ev:"")+(x.manejo?" — "+x.manejo:"")+(x.condicion?". "+x.condicion:"")); });
     (t.peritajes||[]).forEach(function(x){ var e=[]; if(x.autorizada)e.push("autorizada"); if(x.realizada)e.push("realizada");
       novedades.push("Peritaje médico-legal — "+(x.nombre||"")+(x.dau?" (DAU "+x.dau+")":"")+(e.length?" — "+e.join(", "):"")); });
     var pend=[];
-    pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
+    pre.forEach(function(x){ var tv=fmtBishop(x); pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:[tv,fmtMefi(x),(x.evolucion?"Evolución: "+x.evolucion:""),x.condicion||""].filter(Boolean).join("\n"), manejo:x.manejo||""}); });
     obs.forEach(function(x){ pend.push({ubic:"Observación"+(x.n?" "+x.n:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
     otras.forEach(function(x){ pend.push({ubic:(x.servicio?x.servicio+" ":"")+(x.cama||"Otra unidad"), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
-    ing.forEach(function(x){ pend.push({ubic:"Ingreso"+(x.cama?" "+x.cama:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:"", manejo:x.manejo||""}); });
     return { fecha:meta.fecha||"", staff:staff,
       saliente: meta.nombreSaliente || staff, rutSaliente: meta.rutSaliente||"",
       entrante: meta.entrante||"", rutEntrante: meta.rutEntrante||"",
@@ -863,15 +980,20 @@
     body.push(para("REGISTRO MÉDICO-LEGAL DEL CASO", { bold:true, caps:true, sz:26, color:"1A4D8F", align:"center", spaceAfter:0 }));
     body.push(para("Documento privado de respaldo profesional — no forma parte de la entrega de turno", { sz:15, align:"center", color:"5F6368", spaceAfter:120 }));
 
-    body.push(table([2600,3400,2400,2400],[
-      headerRow(["Fecha del evento","Paciente","N° Ficha","N° DAU"]),
-      [{text:caso.fecha||"",sz:18},{text:caso.paciente||"",sz:18,bold:true},{text:caso.ficha||"",sz:18},{text:caso.dau||"",sz:18}]
+    function filaDato(label, valor, bold) {
+      return [{ text: label, sz: 17, bold: true, shd: "EEF1F5", color: "1A4D8F", valign: "center" },
+              { text: valor || "—", sz: 18, bold: !!bold, valign: "center" }];
+    }
+    body.push(table([2900, 7900], [
+      filaDato("Fecha del evento", caso.fecha),
+      filaDato("Paciente", caso.paciente, true),
+      filaDato("N° Ficha / N° DAU", [caso.ficha ? "Ficha " + caso.ficha : "", caso.dau ? "DAU " + caso.dau : ""].filter(Boolean).join("  ·  ")),
+      filaDato("Profesional a cargo", caso.profesional, true),
+      filaDato("Otros profesionales presentes", caso.equipo)
     ]));
-    body.push(table([2600,8200],[
-      headerRow(["Profesional a cargo","Otros profesionales presentes"]),
-      [{text:caso.profesional||"",sz:18,bold:true},{text:caso.equipo||"",sz:18}]
-    ]));
+    body.push(para("", { spaceAfter: 80 }));
 
+    function mlHeading(t){ return para(t, { bold:true, caps:true, sz:18, color:"1A4D8F", spaceBefore:90, spaceAfter:20 }); }
     var secs = [
       ["Motivo de consulta y contexto", caso.motivo],
       ["Antecedentes relevantes", caso.antecedentes],
@@ -887,19 +1009,19 @@
     ];
     secs.forEach(function (s) {
       if (!s[1] || !String(s[1]).trim()) return;
-      body.push(sectionHeading(s[0]));
+      body.push(mlHeading(s[0]));
       body.push(para(s[1], { sz:18, spaceAfter:60 }));
     });
 
     var cron = (caso.cronologia || []).filter(function (c) { return (c.hora && c.hora.trim()) || (c.evento && c.evento.trim()); });
     if (cron.length) {
-      body.push(sectionHeading("Cronología del caso"));
+      body.push(mlHeading("Cronología del caso"));
       var rows = [headerRow(["Hora","Evento / acción / decisión"])];
-      cron.forEach(function (c) { rows.push([{text:c.hora||"",sz:17,align:"center"},{text:c.evento||"",sz:17}]); });
+      cron.forEach(function (c) { rows.push([{text:c.hora||"",sz:18,align:"center",valign:"center"},{text:c.evento||"",sz:18}]); });
       body.push(table([1500,9300], rows));
     }
 
-    body.push(para("", { spaceBefore:200 }));
+    body.push(para("", { spaceBefore:60 }));
     body.push(signatureTable([
       { has:fsig.has, extent:fsig.extent, rId:"rId1", name:"firmaProfesional", docPrId:201,
         label:"Profesional responsable del registro", nombre:caso.profesional||"", rut:caso.rut||"" },
@@ -935,7 +1057,7 @@
     return zipStore(files);
   }
 
-  var api = { buildDocx: buildDocx, buildMedLegalDocx: buildMedLegalDocx, buildInformeHtml: buildInformeHtml, computeInforme: computeInforme, fmtIdent: fmtIdent, fmtResultado: fmtResultado, fmtRN: fmtRN, crc32: crc32, zipStore: zipStore };
+  var api = { buildDocx: buildDocx, buildMedLegalDocx: buildMedLegalDocx, buildInformeHtml: buildInformeHtml, computeInforme: computeInforme, fmtIdent: fmtIdent, fmtResultado: fmtResultado, fmtBishop: fmtBishop, bishopPuntos: bishopPuntos, bishopInterpretacion: bishopInterpretacion, BISHOP_OPC: BISHOP_OPC, fmtMefi: fmtMefi, fmtEvalIngreso: fmtEvalIngreso, mefiCategoria: mefiCategoria, mefiTexto: mefiTexto, MEFI_OPC: MEFI_OPC, fmtRN: fmtRN, crc32: crc32, zipStore: zipStore };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.DocxCore = api;
 })(typeof self !== "undefined" ? self : this);
@@ -1041,8 +1163,8 @@
     }
 
     section("I. Salas de Parto Integral (Preparto)",
-      ["N° Sala", "Identificación del paciente", "Diagnóstico principal", "Condición actual"],
-      t.partoIntegral, function (x) { return [x.sala || "", fmtIdent(x.ident), x.diagnosticos || "", x.condicion || ""]; }, true);
+      ["N° Sala", "Identificación del paciente", "Diagnóstico principal", "TV / Bishop", "MEFI", "Manejo", "Evolución", "Condición actual"],
+      t.partoIntegral, function (x) { return [x.sala || "", fmtIdent(x.ident), x.diagnosticos || "", DC.fmtBishop(x), DC.fmtMefi(x), x.manejo || "", x.evolucion || "", x.condicion || ""]; }, true);
 
     section("II. Salas de Observación",
       ["N°", "Identificación del paciente", "Diagnóstico principal", "Condición actual"],
@@ -1057,8 +1179,8 @@
       t.intervenciones, function (x) { return [fmtIdent(x.ident), x.diagnostico || "", x.intervencion || "", x.comentarios || ""]; }, true);
 
     section("V. Ingresos a Hospitalización",
-      ["N° Cama", "Identificación del paciente", "Diagnósticos", "Condición actual y manejo propuesto", "Comentarios"],
-      t.ingresos, function (x) { return [x.cama || "", fmtIdent(x.ident), x.diagnosticos || "", x.manejo || "", x.comentarios || ""]; }, true);
+      ["N° Cama", "Tipo", "Identificación del paciente", "Diagnósticos", "Evaluación al ingreso", "Manejo propuesto", "Condición actual", "Comentarios"],
+      t.ingresos, function (x) { return [x.cama || "", x.tipoIngreso || "", fmtIdent(x.ident), x.diagnosticos || "", DC.fmtEvalIngreso(x), x.manejo || "", x.condicion || "", x.comentarios || ""]; }, true);
 
     section("VI. Nacimientos (partos atendidos)",
       ["Identificación (madre)", "Diagnóstico", "Tipo de parto", "Resultado", "Comentarios"],
@@ -1164,7 +1286,11 @@
     { key: "partoIntegral", icon: "", title: "Preparto (Salas de Parto Integral)",
       fields: [{ k: "sala", label: "Sala", type: "short" }, IDENT,
                { k: "diagnosticos", label: "Diagnósticos", type: "area" },
-               { k: "condicion", label: "Condición actual", type: "area" }] },
+               { k: "bishop", label: "Tacto vaginal · Score de Bishop", type: "bishop" },
+               { k: "mefi", label: "MEFI · monitorización fetal", type: "mefi" },
+               { k: "manejo", label: "Manejo", type: "area", ph: "Ej.: conducción ocitócica, maduración con misoprostol, tocólisis, corticoides, ATB profilaxis…" },
+               { k: "evolucion", label: "Evolución durante el turno", type: "area", ph: "Ej.: 06:00 TV 4 cm → 10:00 TV 7 cm, RAM LO claro. MEFI categoría I." },
+               { k: "condicion", label: "Condición actual / información anexa", type: "area", ph: "Laboratorios, imágenes, monitorización…" }] },
     { key: "observacion", icon: "", title: "Salas de Observación",
       fields: [{ k: "n", label: "N°", type: "short" }, IDENT,
                { k: "diagnosticos", label: "Diagnósticos", type: "area" },
@@ -1181,8 +1307,15 @@
                { k: "comentarios", label: "Comentarios", type: "area" }] },
     { key: "ingresos", icon: "", title: "Ingresos a hospitalización",
       fields: [{ k: "cama", label: "Cama", type: "short" }, IDENT,
+               { k: "tipoIngreso", label: "Tipo de paciente", type: "select", options: ["Obstétrica", "Ginecológica"], reload: true },
                { k: "diagnosticos", label: "Diagnósticos", type: "area" },
+               { k: "bishop", label: "Tacto vaginal · Score de Bishop", type: "bishop", only: "Obstétrica" },
+               { k: "mefi", label: "MEFI · monitorización fetal", type: "mefi", only: "Obstétrica" },
+               { k: "examenGin", label: "Examen ginecológico", type: "area", only: "Ginecológica", ph: "Especuloscopía, tacto bimanual, anexos, dolor a la movilización cervical…" },
+               { k: "sangrado", label: "Sangrado genital", type: "select", options: ["Ausente", "Escaso", "Moderado", "Abundante"], only: "Ginecológica" },
+               { k: "dolorEVA", label: "Dolor (EVA 0-10)", type: "select", options: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"], only: "Ginecológica" },
                { k: "manejo", label: "Manejo propuesto", type: "area" },
+               { k: "condicion", label: "Condición actual", type: "area", ph: "Estado hemodinámico, laboratorios, imágenes, evolución…" },
                { k: "comentarios", label: "Comentarios", type: "area" }] },
     { key: "nacimientos", icon: "", title: "Nacimientos (partos atendidos)",
       fields: [{ k: "nombre", label: "Nombre de la madre", type: "text" },
@@ -1440,12 +1573,14 @@
   /* ---------- editor modal ---------- */
   var editCtx = { sec: null, idx: -1 };
   var modalMode = "turno";
-  function openEditor(secKey, idx) {
+  function openEditor(secKey, idx, itemOverride) {
     var sec = SECMAP[secKey]; editCtx = { sec: secKey, idx: idx }; modalMode = "turno";
-    var item = idx >= 0 ? state.turno[secKey][idx] : {};
+    var item = itemOverride || (idx >= 0 ? state.turno[secKey][idx] : {});
     $("#mTitle").textContent = (idx >= 0 ? "Editar — " : "Añadir — ") + sec.title;
     var form = $("#mForm"); form.innerHTML = "";
-    sec.fields.forEach(function (f) {
+    var rama = null;
+    sec.fields.forEach(function (f) { if (f.reload) rama = item[f.k] || ""; });
+    sec.fields.filter(function (f) { return !f.only || f.only === rama; }).forEach(function (f) {
       var wrap = document.createElement("div"); wrap.className = "fld";
       if (f.type === "ident") {
         var id = item.ident || {};
@@ -1459,6 +1594,16 @@
       } else if (f.type === "select") {
         var opts = f.options.map(function (o) { return '<option' + (item[f.k] === o ? " selected" : "") + '>' + o + '</option>'; }).join("");
         wrap.innerHTML = '<label class="f">' + f.label + '</label><select data-f="' + f.k + '"><option value=""></option>' + opts + '</select>';
+      } else if (f.type === "mefi") {
+        wrap.innerHTML = '<label class="f">' + f.label + '</label><div id="mefiHost"></div>';
+        form.appendChild(wrap);
+        renderMefi(item.mefi || {});
+        return;
+      } else if (f.type === "bishop") {
+        wrap.innerHTML = '<label class="f">' + f.label + '</label><div id="bishopHost"></div>';
+        form.appendChild(wrap);
+        renderBishop(item.bishop || {});
+        return;
       } else if (f.type === "rnset") {
         wrap.innerHTML = '<label class="f">' + f.label + '</label><div id="rnsetHost"></div>';
         form.appendChild(wrap);
@@ -1484,6 +1629,11 @@
       el.setAttribute("autocorrect", "off");
       if (el.type === "checkbox") el.checked = !!val;
       else el.value = (val == null ? "" : val);
+    });
+    $$("#mForm [data-f]").forEach(function (el) {
+      var k = el.getAttribute("data-f");
+      var campo = sec.fields.filter(function (f) { return f.k === k; })[0];
+      if (campo && campo.reload) el.addEventListener("change", function () { openEditor(secKey, idx, recolectarEditor(sec)); });
     });
     $("#mSave").style.display = "";
     $("#mDelete").style.display = idx >= 0 ? "" : "none";
@@ -1557,6 +1707,100 @@
     return res;
   }
 
+  // ---- Bloque MEFI ----
+  var mefiState = null;
+  function renderMefi(m) {
+    mefiState = JSON.parse(JSON.stringify(m || {}));
+    var host = $("#mefiHost"); if (!host) return;
+    var O = DocxCore.MEFI_OPC;
+    function sel(k, label) {
+      return '<div><label class="f">' + label + '</label><select data-me="' + k + '"><option value=""></option>' +
+        O[k].map(function (o) { return '<option' + (mefiState[k] === o ? " selected" : "") + '>' + o + '</option>'; }).join("") + '</select></div>';
+    }
+    var cat = DocxCore.mefiCategoria(mefiState);
+    var color = cat === 1 ? "#1e8e5a" : (cat === 2 ? "#b8860b" : (cat === 3 ? "#c0392b" : "#5f6368"));
+    host.innerHTML =
+      '<div class="row">' + sel("basal", "FCF basal") + sel("variabilidad", "Variabilidad") + '</div>' +
+      '<div class="row" style="margin-top:8px">' + sel("aceleraciones", "Aceleraciones") + sel("sinusoidal", "Patrón sinusoidal") + '</div>' +
+      '<div style="margin-top:8px">' + sel("desaceleraciones", "Desaceleraciones") + '</div>' +
+      '<div style="margin-top:10px;padding:10px;border-radius:10px;background:#f4f6f9;text-align:center">' +
+      '<div style="font-size:12px;color:#5f6368">Clasificación MEFI</div>' +
+      '<div style="font-size:22px;font-weight:800;color:' + color + '">' + (cat ? "Categoría " + ["","I","II","III"][cat] : "—") + '</div>' +
+      '<div style="font-size:12px;color:' + color + ';font-weight:600">' + (cat ? DocxCore.mefiTexto(cat).split("— ")[1] : "Completa FCF basal y variabilidad") + '</div></div>';
+    $$("#mefiHost [data-me]").forEach(function (el) {
+      el.addEventListener("change", function () { renderMefi(leerMefi()); });
+    });
+  }
+  function leerMefi() {
+    var m = JSON.parse(JSON.stringify(mefiState || {}));
+    $$("#mefiHost [data-me]").forEach(function (el) { m[el.getAttribute("data-me")] = el.value; });
+    return m;
+  }
+
+  // ---- Bloque Tacto vaginal · Score de Bishop ----
+  var bishopState = null;
+  function renderBishop(b) {
+    bishopState = JSON.parse(JSON.stringify(b || {}));
+    var host = $("#bishopHost"); if (!host) return;
+    var O = DocxCore.BISHOP_OPC;
+    function sel(k, label) {
+      var opts = '<option value=""></option>' + O[k].map(function (p) {
+        return '<option' + (bishopState[k] === p[0] ? " selected" : "") + '>' + p[0] + '</option>';
+      }).join("");
+      return '<div><label class="f">' + label + '</label><select data-bi="' + k + '">' + opts + '</select></div>';
+    }
+    var score = DocxCore.bishopPuntos(bishopState);
+    var ctx = bishopState.contexto || "";
+    var interp = DocxCore.bishopInterpretacion(score, ctx);
+    var color;
+    if (score == null) color = "#5f6368";
+    else if (ctx === "Pretérmino") color = (score >= 6 ? "#c0392b" : (score >= 4 ? "#b8860b" : "#1e8e5a"));
+    else color = (score >= 8 ? "#1e8e5a" : (score >= 6 ? "#b8860b" : "#c0392b"));
+    var selCtx = '<div><label class="f">Contexto obstétrico</label><select data-bi="contexto"><option value=""></option>' +
+      ["Término", "Pretérmino"].map(function (o) { return '<option' + (bishopState.contexto === o ? " selected" : "") + '>' + o + '</option>'; }).join("") +
+      '</select></div>';
+    function selLibre(k, label, opts) {
+      return '<div><label class="f">' + label + '</label><select data-bi="' + k + '"><option value=""></option>' +
+        opts.map(function (o) { return '<option' + (bishopState[k] === o ? " selected" : "") + '>' + o + '</option>'; }).join("") + '</select></div>';
+    }
+    host.innerHTML =
+      '<div class="row">' + selCtx +
+        selLibre("du", "Dinámica uterina", ["Ausente", "Irregular", "1 en 10 min", "2 en 10 min", "3 en 10 min", "4-5 en 10 min"]) + '</div>' +
+      '<div class="row" style="margin-top:8px">' + selLibre("duIntensidad", "Intensidad DU", ["Leve", "Moderada", "Intensa"]) + '<div></div></div>' +
+      '<div class="row" style="margin-top:8px">' + sel("dilatacion", "Dilatación") + sel("borramiento", "Borramiento") + '</div>' +
+      '<div class="row" style="margin-top:8px">' + sel("consistencia", "Consistencia") + sel("posicion", "Posición") + '</div>' +
+      '<div class="row" style="margin-top:8px">' + sel("estacion", "Estación (De Lee)") +
+      '<div><label class="f">Membranas</label><select data-bi="membranas"><option value=""></option>' +
+      ["Íntegras", "Rotas"].map(function (o) { return '<option' + (bishopState.membranas === o ? " selected" : "") + '>' + o + '</option>'; }).join("") +
+      '</select></div></div>' +
+      '<div style="margin-top:10px;padding:10px;border-radius:10px;background:#f4f6f9;text-align:center">' +
+      '<div style="font-size:12px;color:#5f6368">Score de Bishop</div>' +
+      '<div style="font-size:22px;font-weight:800;color:' + color + '">' + (score == null ? "—" : score + " / 13") + '</div>' +
+      '<div style="font-size:12.5px;color:' + color + ';font-weight:600">' + (interp || "Completa los campos") + '</div></div>';
+    $$("#bishopHost [data-bi]").forEach(function (el) {
+      el.addEventListener("change", function () { renderBishop(leerBishop()); });
+    });
+  }
+  function leerBishop() {
+    var b = JSON.parse(JSON.stringify(bishopState || {}));
+    $$("#bishopHost [data-bi]").forEach(function (el) { b[el.getAttribute("data-bi")] = el.value; });
+    return b;
+  }
+
+  function recolectarEditor(sec) {
+    var obj = {};
+    $$("#mForm [data-f]").forEach(function (el) {
+      var key = el.getAttribute("data-f");
+      var val = (el.type === "checkbox") ? el.checked : el.value.trim();
+      if (key.indexOf("ident.") === 0) { obj.ident = obj.ident || {}; obj.ident[key.split(".")[1]] = val; }
+      else obj[key] = val;
+    });
+    if ($("#bishopHost")) obj.bishop = leerBishop();
+    if ($("#mefiHost")) obj.mefi = leerMefi();
+    if ($("#rnsetHost")) obj.resultado = leerRnset();
+    return obj;
+  }
+
   function attr(v) { return String(v == null ? "" : v).replace(/"/g, "&quot;"); }
   function closeModal() { $("#modal").classList.remove("show"); }
 
@@ -1578,6 +1822,8 @@
       else obj[key] = val;
     });
     var arr = state.turno[editCtx.sec];
+    if ($("#bishopHost")) { obj.bishop = leerBishop(); }
+    if ($("#mefiHost")) { obj.mefi = leerMefi(); }
     if ($("#rnsetHost")) { obj.resultado = leerRnset(); delete obj.rnTipo; delete obj.rnSemanas; delete obj.rnPeso; delete obj.rnApgar; delete obj.infoRN; }
     if (editCtx.idx >= 0) arr[editCtx.idx] = obj; else arr.push(obj);
     closeModal(); renderSummary(); renderSections(); saveSoon();
@@ -1833,11 +2079,11 @@
   function buildRegistroHtml(t) {
     var meta = t.meta || {}, c = counts();
     var defs = [
-      ["I. Preparto", t.partoIntegral, ["Sala", "Identificación", "Diagnóstico", "Condición"], function (x) { return [x.sala || "", identSummary(x.ident), x.diagnosticos || "", x.condicion || ""]; }],
+      ["I. Preparto", t.partoIntegral, ["Sala", "Identificación", "Diagnóstico", "TV / Bishop", "MEFI", "Manejo", "Evolución", "Condición"], function (x) { return [x.sala || "", identSummary(x.ident), x.diagnosticos || "", DocxCore.fmtBishop(x), DocxCore.fmtMefi(x), x.manejo || "", x.evolucion || "", x.condicion || ""]; }],
       ["II. Observación", t.observacion, ["N°", "Identificación", "Diagnóstico", "Condición"], function (x) { return [x.n || "", identSummary(x.ident), x.diagnosticos || "", x.condicion || ""]; }],
       ["III. Otras unidades", t.otrasUnidades, ["Cama", "Servicio", "Identificación", "Diagnóstico", "Condición"], function (x) { return [x.cama || "", x.servicio || "", identSummary(x.ident), x.diagnosticos || "", x.condicion || ""]; }],
       ["IV. Intervenciones", t.intervenciones, ["Identificación", "Diagnóstico", "Intervención", "Comentarios"], function (x) { return [identSummary(x.ident), x.diagnostico || "", x.intervencion || "", x.comentarios || ""]; }],
-      ["V. Ingresos", t.ingresos, ["Cama", "Identificación", "Diagnósticos", "Manejo", "Comentarios"], function (x) { return [x.cama || "", identSummary(x.ident), x.diagnosticos || "", x.manejo || "", x.comentarios || ""]; }],
+      ["V. Ingresos", t.ingresos, ["Cama", "Tipo", "Identificación", "Diagnósticos", "Evaluación", "Manejo", "Condición", "Comentarios"], function (x) { return [x.cama || "", x.tipoIngreso || "", identSummary(x.ident), x.diagnosticos || "", DocxCore.fmtEvalIngreso(x), x.manejo || "", x.condicion || "", x.comentarios || ""]; }],
       ["VI. Nacimientos", t.nacimientos, ["Identificación", "Diagnóstico", "Tipo", "Resultado", "Comentarios"], function (x) { return [(x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.diagnostico || "", x.tipoParto || "", DocxCore.fmtResultado(x), x.comentarios || ""]; }],
       ["VII. Peritajes", t.peritajes, ["Nombre", "DAU", "Autorizada", "Realizada"], function (x) { return [x.nombre || "", x.dau || "", x.autorizada ? "Sí" : "—", x.realizada ? "Sí" : "—"]; }]
     ];
