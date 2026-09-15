@@ -107,6 +107,7 @@
 <header class="app">
   <h1>Entrega de Turno</h1>
   <div class="sub" id="subHdr">Servicio OBGIN — HRA</div>
+  <div style="position:absolute;right:12px;bottom:6px;font-size:10px;opacity:.6" id="verTag">v4.3</div>
   <div class="navbtns">
     <button id="btnFirma">Firma</button>
     <button id="btnHist">Historial</button>
@@ -574,6 +575,41 @@
     return [fmtBishop(x), fmtMefi(x)].filter(Boolean).join(" · ");
   }
 
+  // Versiones compactas (para tablas estrechas del informe ejecutivo)
+  function fmtBishopCompacto(x) {
+    var b = x && x.bishop; if (!b) return "";
+    var p = [];
+    if (b.du) p.push("DU " + b.du.replace(" en 10 min", "/10") + (b.duIntensidad ? " " + b.duIntensidad.toLowerCase().slice(0, 3) + "." : ""));
+    var tv = [];
+    if (b.dilatacion) tv.push(b.dilatacion.replace(" cm", "cm"));
+    if (b.borramiento) tv.push(b.borramiento);
+    if (b.consistencia) tv.push(b.consistencia.toLowerCase().slice(0, 5) + ".");
+    if (b.posicion) tv.push(b.posicion.toLowerCase().slice(0, 4) + ".");
+    if (b.estacion) tv.push("DL " + b.estacion);
+    if (b.membranas) tv.push("memb. " + b.membranas.toLowerCase().slice(0, 4) + ".");
+    if (tv.length) p.push("TV " + tv.join(", "));
+    var s = bishopPuntos(b);
+    if (s != null) {
+      var corto;
+      if (b.contexto === "Pretérmino") corto = (s >= 6 ? "cambios signif." : (s >= 4 ? "cambios incip." : "sin cambios"));
+      else corto = (s >= 8 ? "favorable" : (s >= 6 ? "intermedio" : "desfavorable"));
+      p.push("Bishop " + s + " " + corto);
+    }
+    return p.join(" · ");
+  }
+  function fmtMefiCompacto(x) {
+    var m = x && x.mefi; if (!m) return "";
+    var cat = mefiCategoria(m);
+    if (!cat) return "";
+    var extra = [];
+    if (cat !== 1) {
+      if (m.variabilidad && m.variabilidad !== "Moderada (6-25)") extra.push("variab. " + m.variabilidad.toLowerCase().split(" ")[0]);
+      if (m.desaceleraciones && m.desaceleraciones !== "Ausentes") extra.push("desac. " + m.desaceleraciones.toLowerCase());
+      if (m.basal && m.basal !== "Normal (110-160)") extra.push(m.basal.toLowerCase().split(" ")[0]);
+    }
+    return "MEFI Cat. " + ["", "I", "II", "III"][cat] + (extra.length ? " (" + extra.join(", ") + ")" : "");
+  }
+
   function fmtRNItem(r) {
     if (!r) return "";
     var p = [];
@@ -751,11 +787,11 @@
 
     var novedades=[];
     (t.intervenciones||[]).forEach(function(x){ novedades.push("Intervención — "+fmtIdent(x.ident)+(x.diagnostico?": "+x.diagnostico:"")+(x.intervencion?" → "+x.intervencion:"")+(x.comentarios?" ("+x.comentarios+")":"")); });
-    ing.forEach(function(x){ var ev=fmtEvalIngreso(x); novedades.push("Ingreso"+(x.tipoIngreso?" "+x.tipoIngreso.toLowerCase():"")+(x.cama?" (cama "+x.cama+")":"")+" — "+fmtIdent(x.ident)+(x.diagnosticos?": "+x.diagnosticos:"")+(ev?". "+ev:"")+(x.manejo?" — "+x.manejo:"")+(x.condicion?". "+x.condicion:"")); });
+    ing.forEach(function(x){ var ev=(x.tipoIngreso==="Ginecológica"?fmtEvalIngreso(x):[fmtBishopCompacto(x),fmtMefiCompacto(x)].filter(Boolean).join(" · ")); novedades.push("Ingreso"+(x.tipoIngreso?" "+x.tipoIngreso.toLowerCase():"")+(x.cama?" (cama "+x.cama+")":"")+" — "+fmtIdent(x.ident)+(x.diagnosticos?": "+x.diagnosticos:"")+(ev?". "+ev:"")+(x.manejo?" — "+x.manejo:"")+(x.condicion?". "+x.condicion:"")); });
     (t.peritajes||[]).forEach(function(x){ var e=[]; if(x.autorizada)e.push("autorizada"); if(x.realizada)e.push("realizada");
       novedades.push("Peritaje médico-legal — "+(x.nombre||"")+(x.dau?" (DAU "+x.dau+")":"")+(e.length?" — "+e.join(", "):"")); });
     var pend=[];
-    pre.forEach(function(x){ var tv=fmtBishop(x); pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:[tv,fmtMefi(x),(x.evolucion?"Evolución: "+x.evolucion:""),x.condicion||""].filter(Boolean).join("\n"), manejo:x.manejo||""}); });
+    pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:[fmtBishopCompacto(x),fmtMefiCompacto(x),x.condicion||""].filter(Boolean).join("\n"), manejo:[x.manejo||"",(x.evolucion?"Evol.: "+x.evolucion:"")].filter(Boolean).join("\n")}); });
     obs.forEach(function(x){ pend.push({ubic:"Observación"+(x.n?" "+x.n:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
     otras.forEach(function(x){ pend.push({ubic:(x.servicio?x.servicio+" ":"")+(x.cama||"Otra unidad"), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
     return { fecha:meta.fecha||"", staff:staff,
@@ -848,7 +884,7 @@
     if(m.pendientes.length){
       var rows=[headerRow(["Ubicación","Paciente","Diagnóstico","Condición","Manejo"])];
       m.pendientes.forEach(function(p){ rows.push([{text:p.ubic,sz:16},{text:p.ident,sz:16,bold:true},{text:p.dx,sz:16},{text:p.cond,sz:16},{text:p.manejo,sz:16}]); });
-      body.push(table([1600,2600,2600,2000,2000],rows));
+      body.push(table([1250,2300,2350,2900,2000],rows));
     } else body.push(para("Sin pacientes activos al cierre del turno.", { sz:18, color:"5F6368" }));
 
     body.push(para("", { spaceBefore:200 }));
@@ -1057,7 +1093,7 @@
     return zipStore(files);
   }
 
-  var api = { buildDocx: buildDocx, buildMedLegalDocx: buildMedLegalDocx, buildInformeHtml: buildInformeHtml, computeInforme: computeInforme, fmtIdent: fmtIdent, fmtResultado: fmtResultado, fmtBishop: fmtBishop, bishopPuntos: bishopPuntos, bishopInterpretacion: bishopInterpretacion, BISHOP_OPC: BISHOP_OPC, fmtMefi: fmtMefi, fmtEvalIngreso: fmtEvalIngreso, mefiCategoria: mefiCategoria, mefiTexto: mefiTexto, MEFI_OPC: MEFI_OPC, fmtRN: fmtRN, crc32: crc32, zipStore: zipStore };
+  var api = { buildDocx: buildDocx, buildMedLegalDocx: buildMedLegalDocx, buildInformeHtml: buildInformeHtml, computeInforme: computeInforme, fmtIdent: fmtIdent, fmtResultado: fmtResultado, fmtBishop: fmtBishop, bishopPuntos: bishopPuntos, bishopInterpretacion: bishopInterpretacion, BISHOP_OPC: BISHOP_OPC, fmtMefi: fmtMefi, fmtEvalIngreso: fmtEvalIngreso, fmtBishopCompacto: fmtBishopCompacto, fmtMefiCompacto: fmtMefiCompacto, mefiCategoria: mefiCategoria, mefiTexto: mefiTexto, MEFI_OPC: MEFI_OPC, fmtRN: fmtRN, crc32: crc32, zipStore: zipStore };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.DocxCore = api;
 })(typeof self !== "undefined" ? self : this);
@@ -1115,7 +1151,7 @@
     '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
     '</styleSheet>';
 
-  var NCOLS = 6; // A..F
+  var NCOLS = 8; // A..H
 
   function buildSheet(turno) {
     var t = turno || {}, meta = t.meta || {};
@@ -1214,12 +1250,14 @@
     }
     var cols =
       '<cols>' +
-      '<col min="1" max="1" width="20" customWidth="1"/>' +
-      '<col min="2" max="2" width="26" customWidth="1"/>' +
-      '<col min="3" max="3" width="30" customWidth="1"/>' +
-      '<col min="4" max="4" width="34" customWidth="1"/>' +
-      '<col min="5" max="5" width="26" customWidth="1"/>' +
-      '<col min="6" max="6" width="16" customWidth="1"/>' +
+      '<col min="1" max="1" width="17" customWidth="1"/>' +
+      '<col min="2" max="2" width="21" customWidth="1"/>' +
+      '<col min="3" max="3" width="27" customWidth="1"/>' +
+      '<col min="4" max="4" width="29" customWidth="1"/>' +
+      '<col min="5" max="5" width="29" customWidth="1"/>' +
+      '<col min="6" max="6" width="26" customWidth="1"/>' +
+      '<col min="7" max="7" width="24" customWidth="1"/>' +
+      '<col min="8" max="8" width="22" customWidth="1"/>' +
       '</cols>';
     var mc = merges.length ? '<mergeCells count="' + merges.length + '">' +
       merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join("") + '</mergeCells>' : "";
