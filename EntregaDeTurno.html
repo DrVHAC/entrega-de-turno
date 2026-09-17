@@ -448,13 +448,14 @@
       '<w:top w:w="60" w:type="dxa"/><w:left w:w="110" w:type="dxa"/>' +
       '<w:bottom w:w="60" w:type="dxa"/><w:right w:w="110" w:type="dxa"/></w:tblCellMar>';
     var grid = "<w:tblGrid>" + colWidths.map(function (w) { return '<w:gridCol w:w="' + w + '"/>'; }).join("") + "</w:tblGrid>";
-    var trs = rows.map(function (r) {
+    var trs = rows.map(function (r, ri) {
       var tcs = r.map(function (c, i) {
         return cell(colWidths[i], c.text, c);
       }).join("");
-      return "<w:tr>" + tcs + "</w:tr>";
+      var trPr = '<w:trPr><w:cantSplit/>' + (ri === 0 ? '<w:tblHeader/>' : '') + '</w:trPr>';
+      return "<w:tr>" + trPr + tcs + "</w:tr>";
     }).join("");
-    return "<w:tbl><w:tblPr><w:tblW w:w=\"" + totalW + "\" w:type=\"dxa\"/><w:tblLayout w:type=\"fixed\"/>" +
+    return '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblInd w:w="0" w:type="dxa"/><w:tblLayout w:type="fixed"/>' +
       borders + cellMar + "</w:tblPr>" + grid + trs + "</w:tbl>";
   }
 
@@ -576,24 +577,21 @@
   }
 
   // Versiones compactas (para tablas estrechas del informe ejecutivo)
+  // Word (informe ejecutivo): SOLO lo significativo. El detalle completo va al Excel.
   function fmtBishopCompacto(x) {
     var b = x && x.bishop; if (!b) return "";
     var p = [];
-    if (b.du) p.push("DU " + b.du.replace(" en 10 min", "/10") + (b.duIntensidad ? " " + b.duIntensidad.toLowerCase().slice(0, 3) + "." : ""));
-    var tv = [];
-    if (b.dilatacion) tv.push(b.dilatacion.replace(" cm", "cm"));
-    if (b.borramiento) tv.push(b.borramiento);
-    if (b.consistencia) tv.push(b.consistencia.toLowerCase().slice(0, 5) + ".");
-    if (b.posicion) tv.push(b.posicion.toLowerCase().slice(0, 4) + ".");
-    if (b.estacion) tv.push("DL " + b.estacion);
-    if (b.membranas) tv.push("memb. " + b.membranas.toLowerCase().slice(0, 4) + ".");
-    if (tv.length) p.push("TV " + tv.join(", "));
+    if (b.du) {
+      var du = b.du === "Ausente" ? "DU ausente" : (b.du === "Irregular" ? "DU irregular" : "DU " + b.du.replace(" en 10 min", "/10"));
+      if (b.duIntensidad) du += " " + (b.du === "Ausente" ? "" : b.duIntensidad.toLowerCase() + (/^\d/.test(b.du) ? "s" : ""));
+      p.push(du.trim());
+    }
     var s = bishopPuntos(b);
     if (s != null) {
       var corto;
-      if (b.contexto === "Pretérmino") corto = (s >= 6 ? "cambios signif." : (s >= 4 ? "cambios incip." : "sin cambios"));
+      if (b.contexto === "Pretérmino") corto = (s >= 6 ? "cambios significativos" : (s >= 4 ? "cambios incipientes" : "sin cambios"));
       else corto = (s >= 8 ? "favorable" : (s >= 6 ? "intermedio" : "desfavorable"));
-      p.push("Bishop " + s + " " + corto);
+      p.push("Bishop " + s + " (" + corto + ")");
     }
     return p.join(" · ");
   }
@@ -601,13 +599,42 @@
     var m = x && x.mefi; if (!m) return "";
     var cat = mefiCategoria(m);
     if (!cat) return "";
-    var extra = [];
-    if (cat !== 1) {
-      if (m.variabilidad && m.variabilidad !== "Moderada (6-25)") extra.push("variab. " + m.variabilidad.toLowerCase().split(" ")[0]);
-      if (m.desaceleraciones && m.desaceleraciones !== "Ausentes") extra.push("desac. " + m.desaceleraciones.toLowerCase());
-      if (m.basal && m.basal !== "Normal (110-160)") extra.push(m.basal.toLowerCase().split(" ")[0]);
-    }
-    return "MEFI Cat. " + ["", "I", "II", "III"][cat] + (extra.length ? " (" + extra.join(", ") + ")" : "");
+    return "MEFI Cat. " + ["", "I", "II", "III"][cat];
+  }
+
+
+  // Perfil de resolución del turno: casos que REQUIRIERON INTERVENCIÓN MÉDICA
+  // frente a los que cursaron SIN INCIDENTES (conducidos por el equipo de turno).
+  // El criterio queda reflejado en los documentos en lenguaje clínico, sin rotular jerarquías.
+  // La VÍA de parto define la intervención: cesárea y fórceps son quirúrgicas/instrumentales.
+  // El parto vaginal se clasifica por su curso: sin incidentes o con procedimientos.
+  function procedimientosDe(x) {
+    var l = Array.isArray(x.procedimientos) ? x.procedimientos.slice() : [];
+    if (x.otroProc && x.otroProc.trim()) l.push(x.otroProc.trim());
+    return l;
+  }
+  function partoConIntervencion(x) {
+    var tipo = (x.tipoParto || "").toLowerCase();
+    if (tipo.indexOf("ces") === 0 || tipo.indexOf("f") === 0) return true;
+    if (x.incidentes === "Con incidentes") return true;
+    return procedimientosDe(x).length > 0;
+  }
+  var partoEsDirecto = partoConIntervencion;
+  function resolucionParto(x) {
+    if ((x.tipoParto || "").toLowerCase().indexOf("ces") === 0) return "Cesárea";
+    var p = procedimientosDe(x);
+    return p.length ? p.join("; ") : "Sin incidentes";
+  }
+  function actividadDirectaIndirecta(t) {
+    t = t || {};
+    var nac = t.nacimientos || [];
+    function esCesarea(x) { return (x.tipoParto || "").toLowerCase().indexOf("ces") === 0; }
+    var cesareas = nac.filter(esCesarea).length;
+    var vaginales = nac.filter(function (x) { return !esCesarea(x); });
+    var vagConInterv = vaginales.filter(partoConIntervencion).length;
+    return { cesareas: cesareas, vaginales: vaginales.length,
+             vagConInterv: vagConInterv, vagSinInc: vaginales.length - vagConInterv,
+             nacTotal: nac.length };
   }
 
   function fmtRNItem(r) {
@@ -669,7 +696,8 @@
 
   // ---- sección genérica ----------------------------------------------------
   function sectionHeading(txt) {
-    return para(txt, { bold: true, caps: true, sz: 20, color: "1A4D8F", spaceBefore: 160, spaceAfter: 60 });
+    return '<w:p><w:pPr><w:keepNext/><w:keepLines/><w:spacing w:before="160" w:after="60"/></w:pPr>' +
+      runsFromText(txt, { bold: true, caps: true, sz: 20, color: "1A4D8F" }) + '</w:p>';
   }
   var HDR_SHD = "1A4D8F", HDR_COLOR = "FFFFFF";
   function headerRow(labels) {
@@ -711,7 +739,7 @@
         para(c.nombre || "", { align: "center", sz: 18, bold: true }) +
         para(c.rut ? "RUT " + c.rut : "", { align: "center", sz: 16, color: "5F6368" }) + "</w:tc>";
     }
-    return '<w:tbl><w:tblPr><w:tblW w:w="10800" w:type="dxa"/><w:tblLayout w:type="fixed"/>' +
+    return '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblInd w:w="0" w:type="dxa"/><w:tblLayout w:type="fixed"/>' +
       '<w:tblBorders>' +
       ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(function (s) {
         return '<w:' + s + ' w:val="none" w:sz="0" w:space="0" w:color="auto"/>';
@@ -733,63 +761,105 @@
     var staff=(meta.staff&&meta.staff.length?meta.staff.join(" / "):"");
     var kpis={consultas:consultas, nac:nac.length, vag:vag, ces:ces, forc:forc, interv:interv, ing:ing.length, pre:pre.length, obs:obs.length, otras:otras.length};
     function np(n,s,p){ return n+" "+(Number(n)===1?s:p); }
-    var resumen = "Durante el turno de 24 horas del "+(meta.fecha||"")+", el equipo de turno"+
-      (staff? " ("+staff+")":"")+" gestionó una carga asistencial de "+np(consultas,"atención","atenciones")+" en el box de Urgencia. "+
-      "Se atendieron "+np(nac.length,"nacimiento","nacimientos")+
-      (nac.length? " ("+vag+" "+(vag===1?"vaginal":"vaginales")+", "+ces+" "+(ces===1?"cesárea":"cesáreas")+", "+forc+" fórceps)":"")+
-      " y se realizaron "+np(interv,"intervención ginecológica","intervenciones ginecológicas")+", con "+np(ing.length,"ingreso","ingresos")+" a hospitalización. "+
-      "Al cierre del turno permanecen activas "+np(pre.length,"paciente","pacientes")+" en preparto, "+obs.length+" en observación y "+otras.length+" en otras unidades, cuyo detalle y manejo se consignan en la tabla de pendientes.";
-    var pctCes = nac.length ? Math.round(ces / nac.length * 100) : 0;
-    var pctVag = nac.length ? Math.round(vag / nac.length * 100) : 0;
-    var activos = pre.length + obs.length + otras.length;
-    var analisis = "";
-    if (nac.length) analisis += "La tasa de cesáreas del turno fue de " + pctCes + "% (" + ces + "/" + nac.length + "), con " + pctVag + "% de partos vaginales. ";
-    analisis += "La carga del box de Urgencia (" + consultas + " atenciones) " +
-      (Number(consultas) >= 60 ? "se ubicó en rango alto para un turno de 24 horas" : (Number(consultas) >= 30 ? "se mantuvo en rango habitual" : "se ubicó en rango bajo")) + ". ";
-    if (interv) analisis += "La actividad quirúrgica ginecológica alcanzó " + np(interv, "procedimiento", "procedimientos") + ". ";
-    analisis += activos ? "Se traspasan " + np(activos, "paciente activa", "pacientes activas") + " al turno entrante." : "No se traspasan pacientes activas al turno entrante.";
+    var act = actividadDirectaIndirecta(t);
+    var parrafos = [];
 
-    // ---- Guion adaptativo: estándar (compacto) vs relevante (detallado) ----
+    parrafos.push("Durante el turno de 24 horas del " + (meta.fecha || "") + ", el equipo de turno" +
+      (staff ? " (" + staff + ")" : "") + " gestionó una carga asistencial de " + np(consultas, "atención", "atenciones") +
+      " en el box de Urgencia. Se atendieron " + np(nac.length, "nacimiento", "nacimientos") +
+      (nac.length ? " (" + vag + " " + (vag === 1 ? "vaginal" : "vaginales") + ", " + ces + " " + (ces === 1 ? "cesárea" : "cesáreas") + ", " + forc + " fórceps)" : "") +
+      " y se realizaron " + np(interv, "intervención ginecológica", "intervenciones ginecológicas") +
+      ", con " + np(ing.length, "ingreso", "ingresos") + " a hospitalización.");
+
+    var activos = pre.length + obs.length + otras.length;
+    parrafos.push(activos
+      ? "Al cierre del turno quedan pendientes: " + pre.length + " " + (pre.length === 1 ? "paciente" : "pacientes") +
+        " en preparto, " + obs.length + " en observación y " + otras.length + " en otras unidades, cuyo detalle y manejo se consignan en la tabla de pendientes."
+      : "Al cierre del turno no quedan pacientes pendientes.");
+
+    // Vía de parto y curso de los partos vaginales
+    if (nac.length) {
+      var f3 = "La tasa de cesáreas del turno fue de " + (nac.length ? Math.round(ces / nac.length * 100) : 0) + "% (" + ces + "/" + nac.length + ")";
+      if (act.vaginales) {
+        if (!act.vagConInterv) {
+          f3 += ", con " + act.vaginales + " " + (act.vaginales === 1 ? "parto vaginal" : "partos vaginales") + " sin incidentes.";
+        } else {
+          f3 += ". Hubo " + np(act.vaginales, "parto vaginal", "partos vaginales");
+          if (act.vagSinInc) f3 += ", " + act.vagSinInc + " sin incidentes";
+          var detalles = [];
+          (t.nacimientos || []).forEach(function (x) {
+            if ((x.tipoParto || "").toLowerCase().indexOf("ces") === 0) return;
+            var p = procedimientosDe(x);
+            if (p.length) detalles.push(p.join(", ").toLowerCase());
+            else if ((x.tipoParto || "").toLowerCase().indexOf("f") === 0) detalles.push("fórceps");
+          });
+          if (detalles.length) f3 += "; " + (detalles.length === 1 ? "uno requirió " : detalles.length + " requirieron ") + detalles.join("; ");
+          f3 += ".";
+        }
+      } else f3 += ".";
+      parrafos.push(f3);
+    }
+
+    parrafos.push("La carga de los boxes de Urgencia (" + consultas + " atenciones) " +
+      (Number(consultas) >= 60 ? "se ubicó en rango alto para un turno de 24 horas" : (Number(consultas) >= 30 ? "se mantuvo en rango habitual" : "se ubicó en rango bajo")) + ".");
+
+    if (interv) parrafos.push("La actividad quirúrgica ginecológica alcanzó " + np(interv, "procedimiento", "procedimientos") + ".");
+
+    parrafos.push(activos
+      ? "Se traspasan " + np(activos, "paciente pendiente", "pacientes pendientes") + " al turno entrante."
+      : "No se traspasan pacientes pendientes al turno entrante.");
+
+    var resumen = parrafos[0];
+    var analisis = parrafos.slice(1);
+
+    // ---- Guion adaptativo: casos estándar (compacto) vs con incidentes (detallado) ----
     function esRelevante(x) {
+      if (partoConIntervencion(x)) return true;                 // cesárea, fórceps o con procedimientos
+      if (x.comentarios && x.comentarios.trim()) return true;
       var res = x.resultado;
-      if (x.comentarios && x.comentarios.trim()) return true;          // procedimiento con incidencias
-      if (!res || !res.rns || !res.rns.length) {                        // formato antiguo
-        return !!((x.infoRN && x.infoRN.trim()) || (x.rnTipo && /pret/i.test(x.rnTipo)));
-      }
-      if (res.tipo === "Múltiple" || res.rns.length > 1) return true;   // gemelar/triple
+      if (!res || !res.rns || !res.rns.length) return false;
+      if (res.tipo === "Múltiple" || res.rns.length > 1) return true;
       return res.rns.some(function (r) {
         if (r.vitalidad && /óbito|obito/i.test(r.vitalidad)) return true;
         if (r.madurez && /pret/i.test(r.madurez)) return true;
         if (r.obs && r.obs.trim()) return true;
         var ap = String(r.apgar || "").split(/[\/\-\s]+/).filter(Boolean).map(Number);
-        if (ap.length && ap.some(function (v) { return !isNaN(v) && v < 7; })) return true;
-        return false;
+        return ap.length && ap.some(function (v) { return !isNaN(v) && v < 7; });
       });
     }
     var nacRelevantes = nac.filter(esRelevante);
     var nacEstandar = nac.filter(function (x) { return !esRelevante(x); });
     var modoDetalle = nacRelevantes.length > 0;
-    // Frase compacta para los partos sin incidencias
     var resumenEstandar = "";
     if (nacEstandar.length) {
-      function cE(pfx) { return nacEstandar.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf(pfx) === 0; }).length; }
-      var pe = [];
-      if (cE("vag")) pe.push(cE("vag") + " vaginal" + (cE("vag") > 1 ? "es" : ""));
-      if (cE("ces")) pe.push(cE("ces") + " cesárea" + (cE("ces") > 1 ? "s" : ""));
-      if (cE("f")) pe.push(cE("f") + " fórceps");
-      resumenEstandar = np(nacEstandar.length, "nacimiento", "nacimientos") + " sin incidencias" +
-        (pe.length ? " (" + pe.join(", ") + ")" : "") + ": recién nacidos únicos, de término, vivos, con APGAR y examen físico normales.";
+      resumenEstandar = np(nacEstandar.length, "nacimiento", "nacimientos") +
+        " sin incidentes: recién nacidos únicos, de término, vivos, con APGAR y examen físico normales.";
     }
-
-    var nacDetalle = (modoDetalle ? nacRelevantes : []).map(function (x) {
-      return { madre: (x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), dx: x.diagnostico || "", tipo: x.tipoParto || "", rn: fmtResultado(x), obs: x.comentarios || "" };
+    // Cesáreas primero, luego partos vaginales
+    var nacDetalle = nacRelevantes.slice().sort(function (a, b) {
+      var ca = (a.tipoParto || "").toLowerCase().indexOf("ces") === 0 ? 0 : 1;
+      var cb = (b.tipoParto || "").toLowerCase().indexOf("ces") === 0 ? 0 : 1;
+      return ca - cb;
+    }).map(function (x) {
+      return { madre: (x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), dx: x.diagnostico || "",
+               tipo: x.tipoParto || "", curso: resolucionParto(x), rn: fmtResultado(x), obs: x.comentarios || "" };
     });
 
     var novedades=[];
-    (t.intervenciones||[]).forEach(function(x){ novedades.push("Intervención — "+fmtIdent(x.ident)+(x.diagnostico?": "+x.diagnostico:"")+(x.intervencion?" → "+x.intervencion:"")+(x.comentarios?" ("+x.comentarios+")":"")); });
-    ing.forEach(function(x){ var ev=(x.tipoIngreso==="Ginecológica"?fmtEvalIngreso(x):[fmtBishopCompacto(x),fmtMefiCompacto(x)].filter(Boolean).join(" · ")); novedades.push("Ingreso"+(x.tipoIngreso?" "+x.tipoIngreso.toLowerCase():"")+(x.cama?" (cama "+x.cama+")":"")+" — "+fmtIdent(x.ident)+(x.diagnosticos?": "+x.diagnosticos:"")+(ev?". "+ev:"")+(x.manejo?" — "+x.manejo:"")+(x.condicion?". "+x.condicion:"")); });
+    (t.intervenciones||[]).forEach(function(x){
+      var enc = (x.intervencion || "Intervención") + " — " + fmtIdent(x.ident) + (x.cama ? ", cama " + x.cama : "") + ": " +
+        (x.diagnostico || "");
+      novedades.push(enc + " → " + (x.comentarios ? x.comentarios : "Sin incidentes."));
+    });
+    ing.forEach(function(x){
+      var ev = (x.tipoIngreso === "Ginecológica") ? fmtEvalIngreso(x)
+             : [fmtBishopCompacto(x), (x.bishop && x.bishop.membranas ? "Membranas " + x.bishop.membranas.toLowerCase() : ""), fmtMefiCompacto(x)].filter(Boolean).join(" · ");
+      var enc = "Ingreso" + (x.unidad ? " " + x.unidad : "") + " — " + fmtIdent(x.ident) + (x.cama ? ", cama " + x.cama : "") + ": " + (x.diagnosticos || "");
+      novedades.push(enc + (ev ? ". " + ev : "") + (x.condicion ? " — " + x.condicion : "") + (x.manejo ? " — " + x.manejo : ""));
+    });
     (t.peritajes||[]).forEach(function(x){ var e=[]; if(x.autorizada)e.push("autorizada"); if(x.realizada)e.push("realizada");
-      novedades.push("Peritaje médico-legal — "+(x.nombre||"")+(x.dau?" (DAU "+x.dau+")":"")+(e.length?" — "+e.join(", "):"")); });
+      novedades.push("Peritaje médico-legal — "+(x.nombre||"")+(x.dau?" (DAU "+x.dau+")":"")+(e.length?" — "+e.join(", "):"")+"."); });
+
     var pend=[];
     pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:[fmtBishopCompacto(x),fmtMefiCompacto(x),x.condicion||""].filter(Boolean).join("\n"), manejo:[x.manejo||"",(x.evolucion?"Evol.: "+x.evolucion:"")].filter(Boolean).join("\n")}); });
     obs.forEach(function(x){ pend.push({ubic:"Observación"+(x.n?" "+x.n:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
@@ -837,7 +907,7 @@
         : para("(sin datos)", { sz: 14, color: "5F6368", align: "center" });
       return '<w:tc><w:tcPr><w:tcW w:w="' + W + '" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>' + inner + '</w:tc>';
     }).join("") + "</w:tr>";
-    return '<w:tbl><w:tblPr><w:tblW w:w="' + (W * 3) + '" w:type="dxa"/><w:tblLayout w:type="fixed"/>' + borders + '</w:tblPr>' +
+    return '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblInd w:w="0" w:type="dxa"/><w:tblLayout w:type="fixed"/>' + borders + '</w:tblPr>' +
       '<w:tblGrid><w:gridCol w:w="' + W + '"/><w:gridCol w:w="' + W + '"/><w:gridCol w:w="' + W + '"/></w:tblGrid>' +
       titulos + imgs + '</w:tbl>';
   }
@@ -850,8 +920,8 @@
     body.push(para("Turno 24 h · " + m.fecha + "    |    Entrega: " + (m.saliente||"—") + "  \u2192  " + (m.entrante||"—"), { sz:18, align:"center", spaceAfter:160 }));
 
     body.push(sectionHeading("Resumen ejecutivo"));
-    body.push(para(m.resumen, { sz:20, spaceAfter:60 }));
-    body.push(para(m.analisis, { sz:20, spaceAfter:120 }));
+    body.push(para(m.resumen, { sz:20, spaceAfter:80 }));
+    (m.analisis || []).forEach(function(p, i2){ body.push(para(p, { sz:20, spaceAfter: (i2 === (m.analisis.length-1) ? 120 : 80) })); });
 
     body.push(sectionHeading("Actividad del turno"));
     var k=m.kpis;
@@ -870,9 +940,9 @@
       body.push(sectionHeading(m.modoDetalle ? "Nacimientos — detalle de casos relevantes" : "Nacimientos del turno"));
       if (m.resumenEstandar) body.push(para(m.resumenEstandar, { sz:18, spaceAfter:(m.nacDetalle.length?60:0) }));
       if (m.nacDetalle.length) {
-        var rn=[headerRow(["Madre","Diagnóstico","Tipo de parto","Resultado","Comentarios"])];
-        m.nacDetalle.forEach(function(x){ rn.push([{text:x.madre,sz:16,bold:true},{text:x.dx,sz:16},{text:x.tipo,sz:16,align:"center"},{text:x.rn,sz:16},{text:x.obs,sz:16}]); });
-        body.push(table([2400,2100,1500,2800,2000],rn));
+        var rn=[headerRow(["Madre","Diagnóstico","Vía","Curso / procedimientos","Resultado"])];
+        m.nacDetalle.forEach(function(x){ rn.push([{text:x.madre,sz:16,bold:true},{text:x.dx,sz:16},{text:x.tipo,sz:16,align:"center"},{text:x.curso,sz:16},{text:x.rn,sz:16}]); });
+        body.push(table([2300,2200,1300,2700,2300],rn));
       }
     }
 
@@ -918,7 +988,7 @@
         '<div style="font-size:12.5px;margin-top:4px">Turno 24 h · '+eh(m.fecha)+'  |  '+eh(m.saliente||"—")+' → '+eh(m.entrante||"—")+'</div></div>'+
       '<h3 style="color:#1A4D8F;font-size:13px;margin:10px 0 4px">Resumen ejecutivo</h3>'+
       '<p style="font-size:12.5px;line-height:1.5;margin:0 0 6px">'+eh(m.resumen)+'</p>'+
-      '<p style="font-size:12.5px;line-height:1.5;margin:0">'+eh(m.analisis)+'</p>'+
+      (m.analisis||[]).map(function(p){return '<p style="font-size:12.5px;line-height:1.5;margin:0 0 6px">'+eh(p)+'</p>';}).join("")+
       '<h3 style="color:#1A4D8F;font-size:13px;margin:12px 0 4px">Actividad del turno</h3>'+
       '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">'+kpi+'</div>'+
       '<div style="font-size:10.5px;color:#5F6368;margin-bottom:2px">Nacimientos por tipo</div>'+bar("Vaginales",k.vag)+bar("Cesáreas",k.ces)+bar("Fórceps",k.forc)+
@@ -1093,7 +1163,7 @@
     return zipStore(files);
   }
 
-  var api = { buildDocx: buildDocx, buildMedLegalDocx: buildMedLegalDocx, buildInformeHtml: buildInformeHtml, computeInforme: computeInforme, fmtIdent: fmtIdent, fmtResultado: fmtResultado, fmtBishop: fmtBishop, bishopPuntos: bishopPuntos, bishopInterpretacion: bishopInterpretacion, BISHOP_OPC: BISHOP_OPC, fmtMefi: fmtMefi, fmtEvalIngreso: fmtEvalIngreso, fmtBishopCompacto: fmtBishopCompacto, fmtMefiCompacto: fmtMefiCompacto, mefiCategoria: mefiCategoria, mefiTexto: mefiTexto, MEFI_OPC: MEFI_OPC, fmtRN: fmtRN, crc32: crc32, zipStore: zipStore };
+  var api = { buildDocx: buildDocx, buildMedLegalDocx: buildMedLegalDocx, buildInformeHtml: buildInformeHtml, computeInforme: computeInforme, fmtIdent: fmtIdent, fmtResultado: fmtResultado, fmtBishop: fmtBishop, bishopPuntos: bishopPuntos, bishopInterpretacion: bishopInterpretacion, BISHOP_OPC: BISHOP_OPC, fmtMefi: fmtMefi, fmtEvalIngreso: fmtEvalIngreso, actividadDirectaIndirecta: actividadDirectaIndirecta, partoConIntervencion: partoConIntervencion, resolucionParto: resolucionParto, procedimientosDe: procedimientosDe, fmtBishopCompacto: fmtBishopCompacto, fmtMefiCompacto: fmtMefiCompacto, mefiCategoria: mefiCategoria, mefiTexto: mefiTexto, MEFI_OPC: MEFI_OPC, fmtRN: fmtRN, crc32: crc32, zipStore: zipStore };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.DocxCore = api;
 })(typeof self !== "undefined" ? self : this);
@@ -1164,9 +1234,13 @@
       var r = push([cell(text, s)]);
       merges.push("A" + r + ":" + colLetter(NCOLS) + r);
     }
-    function headerRow(labels) { push(labels.map(function (l) { return cell(l, 2); })); }
+    function padRow(n) { // fusiona la última columna usada hasta NCOLS para igualar el ancho de todas las tablas
+      var r = rows.length;
+      if (n < NCOLS) merges.push(colLetter(n) + r + ":" + colLetter(NCOLS) + r);
+    }
+    function headerRow(labels) { push(labels.map(function (l) { return cell(l, 2); })); padRow(labels.length); }
     function dataRow(vals, boldFirst) {
-      push(vals.map(function (v, i) { return cell(v, (boldFirst && i === 0) ? 5 : 3); }));
+      push(vals.map(function (v, i) { return cell(v, (boldFirst && i === 0) ? 5 : 3); })); padRow(vals.length);
     }
 
     // Título
@@ -1219,8 +1293,8 @@
       t.ingresos, function (x) { return [x.cama || "", x.tipoIngreso || "", fmtIdent(x.ident), x.diagnosticos || "", DC.fmtEvalIngreso(x), x.manejo || "", x.condicion || "", x.comentarios || ""]; }, true);
 
     section("VI. Nacimientos (partos atendidos)",
-      ["Identificación (madre)", "Diagnóstico", "Tipo de parto", "Resultado", "Comentarios"],
-      nac, function (x) { return [(x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.diagnostico || "", x.tipoParto || "", DC.fmtResultado(x), x.comentarios || ""]; }, true);
+      ["Identificación (madre)", "Diagnóstico", "Vía de parto", "Curso / procedimientos", "Resultado", "Comentarios"],
+      nac, function (x) { return [(x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.diagnostico || "", x.tipoParto || "", DC.resolucionParto(x), DC.fmtResultado(x), x.comentarios || ""]; }, true);
 
     section("VII. Peritajes Médico-Legales",
       ["Nombre del paciente", "N° DAU", "Autorizada (Fiscalía)", "Realizada"],
@@ -1250,21 +1324,26 @@
     }
     var cols =
       '<cols>' +
-      '<col min="1" max="1" width="17" customWidth="1"/>' +
-      '<col min="2" max="2" width="21" customWidth="1"/>' +
-      '<col min="3" max="3" width="27" customWidth="1"/>' +
-      '<col min="4" max="4" width="29" customWidth="1"/>' +
-      '<col min="5" max="5" width="29" customWidth="1"/>' +
-      '<col min="6" max="6" width="26" customWidth="1"/>' +
-      '<col min="7" max="7" width="24" customWidth="1"/>' +
-      '<col min="8" max="8" width="22" customWidth="1"/>' +
+      '<col min="1" max="1" width="13" customWidth="1"/>' +
+      '<col min="2" max="2" width="17" customWidth="1"/>' +
+      '<col min="3" max="3" width="24" customWidth="1"/>' +
+      '<col min="4" max="4" width="26" customWidth="1"/>' +
+      '<col min="5" max="5" width="26" customWidth="1"/>' +
+      '<col min="6" max="6" width="24" customWidth="1"/>' +
+      '<col min="7" max="7" width="22" customWidth="1"/>' +
+      '<col min="8" max="8" width="20" customWidth="1"/>' +
       '</cols>';
     var mc = merges.length ? '<mergeCells count="' + merges.length + '">' +
       merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join("") + '</mergeCells>' : "";
 
+    var pageSetup =
+      '<printOptions horizontalCentered="1"/>' +
+      '<pageMargins left="0.3" right="0.3" top="0.4" bottom="0.4" header="0.2" footer="0.2"/>' +
+      '<pageSetup paperSize="1" orientation="portrait" scale="55" fitToWidth="1" fitToHeight="0" horizontalDpi="300" verticalDpi="300"/>';
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
-      cols + '<sheetData>' + sd + '</sheetData>' + mc + '</worksheet>';
+      '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
+      cols + '<sheetData>' + sd + '</sheetData>' + mc + pageSetup + '</worksheet>';
   }
 
   function buildXlsx(turno) {
@@ -1340,12 +1419,13 @@
                { k: "diagnosticos", label: "Diagnósticos", type: "area" },
                { k: "condicion", label: "Condición actual", type: "area" }] },
     { key: "intervenciones", icon: "", title: "Intervenciones ginecológicas (operadas)",
-      fields: [IDENT, { k: "diagnostico", label: "Diagnóstico", type: "area" },
+      fields: [{ k: "cama", label: "Cama", type: "short" }, IDENT, { k: "diagnostico", label: "Diagnóstico", type: "area" },
                { k: "intervencion", label: "Intervención", type: "text" },
                { k: "comentarios", label: "Comentarios", type: "area" }] },
     { key: "ingresos", icon: "", title: "Ingresos a hospitalización",
       fields: [{ k: "cama", label: "Cama", type: "short" }, IDENT,
                { k: "tipoIngreso", label: "Tipo de paciente", type: "select", options: ["Obstétrica", "Ginecológica"], reload: true },
+               { k: "unidad", label: "Unidad de destino", type: "select", options: ["ARO", "Ginecología", "Puerperio", "UCI/Intermedio", "Otra"] },
                { k: "diagnosticos", label: "Diagnósticos", type: "area" },
                { k: "bishop", label: "Tacto vaginal · Score de Bishop", type: "bishop", only: "Obstétrica" },
                { k: "mefi", label: "MEFI · monitorización fetal", type: "mefi", only: "Obstétrica" },
@@ -1359,9 +1439,18 @@
       fields: [{ k: "nombre", label: "Nombre de la madre", type: "text" },
                { k: "ficha", label: "N° Ficha (madre)", type: "short" },
                { k: "diagnostico", label: "Diagnóstico", type: "area" },
-               { k: "tipoParto", label: "Tipo de parto", type: "select", options: ["Vaginal", "Cesárea", "Fórceps"] },
+               { k: "tipoParto", label: "Vía de parto", type: "select", options: ["Vaginal", "Cesárea", "Fórceps"] },
+               { k: "incidentes", label: "Curso del parto", type: "select", options: ["Sin incidentes", "Con incidentes"], reload: true },
+               { k: "procedimientos", label: "Procedimientos / incidentes", type: "checks", only: "Con incidentes",
+                 options: ["Fórceps", "Inercia uterina — manejo farmacológico", "Inercia uterina — manejo quirúrgico (B-Lynch)",
+                           "Retención placentaria — alumbramiento manual", "Revisión instrumental de cavidad",
+                           "Desgarro perineal — reparación", "Desgarro cervical — reparación",
+                           "Hemorragia post-parto", "Histerectomía obstétrica", "Distocia de hombros",
+                           "Esterilización quirúrgica", "Transfusión"] },
+               { k: "otroProc", label: "Otro (especificar)", type: "area", only: "Con incidentes", ph: "Describir el procedimiento o incidente no listado" },
                { k: "resultado", label: "Resultado", type: "rnset" },
-               { k: "comentarios", label: "Comentarios del procedimiento", type: "area", ph: "Ej.: esterilización quirúrgica, hemorragia post-parto, histerectomía obstétrica, desgarro y reparación, retención de placenta…" }] },
+               { k: "comentarios", label: "Comentarios del procedimiento", type: "area", ph: "Ej.: esterilización quirúrgica, hemorragia post-parto, histerectomía obstétrica, desgarro y reparación, retención de placenta…" },
+               ] },
     { key: "peritajes", icon: "", title: "Peritajes médico-legales",
       fields: [{ k: "nombre", label: "Nombre del paciente", type: "text" },
                { k: "dau", label: "N° DAU (Dato de Atención de Urgencia)", type: "text" },
@@ -1649,6 +1738,15 @@
         return;
       } else if (f.type === "area") {
         wrap.innerHTML = '<label class="f">' + f.label + '</label><textarea data-f="' + f.k + '"' + (f.ph ? ' placeholder="' + attr(f.ph) + '"' : '') + '>' + escapeHtml(item[f.k] || "") + '</textarea>';
+      } else if (f.type === "checks") {
+        var sel0 = Array.isArray(item[f.k]) ? item[f.k] : [];
+        wrap.innerHTML = '<label class="f">' + f.label + '</label>' +
+          '<div style="border:1px solid var(--linea);border-radius:10px;padding:8px;background:#fbfcfe">' +
+          f.options.map(function (o) {
+            return '<label style="display:flex;align-items:center;gap:9px;padding:5px 2px;font-size:14px">' +
+              '<input type="checkbox" data-chk="' + f.k + '" value="' + attr(o) + '" style="width:20px;height:20px"' +
+              (sel0.indexOf(o) >= 0 ? " checked" : "") + '> ' + o + '</label>';
+          }).join("") + '</div>';
       } else if (f.type === "check") {
         wrap.innerHTML = '<label style="display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;color:var(--tinta)">' +
           '<input type="checkbox" data-f="' + f.k + '" style="width:22px;height:22px"' + (item[f.k] ? " checked" : "") + '> ' + f.label + '</label>';
@@ -1833,6 +1931,11 @@
       if (key.indexOf("ident.") === 0) { obj.ident = obj.ident || {}; obj.ident[key.split(".")[1]] = val; }
       else obj[key] = val;
     });
+    $$("#mForm [data-chk]").forEach(function (el) {
+      var k = el.getAttribute("data-chk");
+      if (!Array.isArray(obj[k])) obj[k] = [];
+      if (el.checked) obj[k].push(el.value);
+    });
     if ($("#bishopHost")) obj.bishop = leerBishop();
     if ($("#mefiHost")) obj.mefi = leerMefi();
     if ($("#rnsetHost")) obj.resultado = leerRnset();
@@ -1858,6 +1961,11 @@
       var val = (el.type === "checkbox") ? el.checked : el.value.trim();
       if (key.indexOf("ident.") === 0) { obj.ident = obj.ident || {}; obj.ident[key.split(".")[1]] = val; }
       else obj[key] = val;
+    });
+    $$("#mForm [data-chk]").forEach(function (el) {
+      var k = el.getAttribute("data-chk");
+      if (!Array.isArray(obj[k])) obj[k] = [];
+      if (el.checked) obj[k].push(el.value);
     });
     var arr = state.turno[editCtx.sec];
     if ($("#bishopHost")) { obj.bishop = leerBishop(); }
@@ -1926,18 +2034,64 @@
     });
     return { data: cv.toDataURL("image/png"), w: cv.width, h: cv.height };
   }
+  // Gráfico de torta (dona) con leyenda
+  function panelTorta(data, colores) {
+    var W = 600, H = 420, dpr = 2;
+    var cv = document.createElement("canvas"); cv.width = W * dpr; cv.height = H * dpr;
+    var ctx = cv.getContext("2d"); ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+    var total = data.reduce(function (a, d) { return a + d[1]; }, 0);
+    var cx = W / 2, cy = 165, R = 118, r = 62;
+    if (!total) {
+      ctx.strokeStyle = "#dfe3e8"; ctx.lineWidth = R - r;
+      ctx.beginPath(); ctx.arc(cx, cy, (R + r) / 2, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#9aa0a6"; ctx.font = "600 26px 'Helvetica Neue',Arial,sans-serif";
+      ctx.textAlign = "center"; ctx.fillText("Sin datos", cx, cy + 8);
+      return { data: cv.toDataURL("image/png"), w: cv.width, h: cv.height };
+    }
+    var ang = -Math.PI / 2;
+    data.forEach(function (d, i) {
+      if (!d[1]) return;
+      var frac = d[1] / total, a2 = ang + frac * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, ang, a2); ctx.closePath();
+      ctx.fillStyle = colores[i % colores.length]; ctx.fill();
+      // etiqueta con el valor sobre el sector
+      var mid = (ang + a2) / 2, lx = cx + Math.cos(mid) * (R * 0.72), ly = cy + Math.sin(mid) * (R * 0.72);
+      ctx.fillStyle = "#ffffff"; ctx.font = "700 30px 'Helvetica Neue',Arial,sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      if (frac > 0.07) ctx.fillText(String(d[1]), lx, ly);
+      ang = a2;
+    });
+    // centro blanco (dona) con el total
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = "#ffffff"; ctx.fill();
+    ctx.fillStyle = "#1f2733"; ctx.font = "800 42px 'Helvetica Neue',Arial,sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(total), cx, cy - 6);
+    ctx.fillStyle = "#5f6368"; ctx.font = "500 20px 'Helvetica Neue',Arial,sans-serif";
+    ctx.fillText("total", cx, cy + 26);
+    // leyenda
+    var ly0 = 312;
+    ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    data.forEach(function (d, i) {
+      var y = ly0 + i * 36;
+      ctx.fillStyle = colores[i % colores.length]; ctx.fillRect(58, y - 12, 24, 24);
+      ctx.fillStyle = "#1f2733"; ctx.font = "600 23px 'Helvetica Neue',Arial,sans-serif";
+      ctx.fillText(d[0] + ": " + d[1] + (total ? "  (" + Math.round(d[1] / total * 100) + "%)" : ""), 92, y);
+    });
+    return { data: cv.toDataURL("image/png"), w: cv.width, h: cv.height };
+  }
   function graficosTurno(turno) {
-    var nac = turno.nacimientos || [];
-    function c(pfx) { return nac.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf(pfx) === 0; }).length; }
-    var g1 = panelBarras([["Vaginal", c("vag")], ["Cesárea", c("ces")], ["Fórceps", c("f")]]);
-    var g2 = panelBarras([["Nacim.", nac.length], ["Interv.", (turno.intervenciones || []).length],
-                          ["Ingresos", (turno.ingresos || []).length], ["Perit.", (turno.peritajes || []).length]]);
+    var act = DocxCore.actividadDirectaIndirecta(turno);
+    // 1) Vía de parto: cesárea vs vaginal
+    var g1 = panelTorta([["Cesárea", act.cesareas], ["Parto vaginal", act.vaginales]], ["#1A4D8F", "#1e8e5a"]);
+    // 2) Curso de los partos vaginales
+    var g2 = panelTorta([["Sin incidentes", act.vagSinInc], ["Con procedimientos", act.vagConInterv]], ["#1e8e5a", "#b8860b"]);
+    // 3) Pacientes pendientes al cierre
     var g3 = panelBarras([["Preparto", (turno.partoIntegral || []).length], ["Observ.", (turno.observacion || []).length],
                           ["Otras unid.", (turno.otrasUnidades || []).length]]);
     return [
-      { bytes: g1.data, w: g1.w, h: g1.h, titulo: "Nacimientos por tipo" },
-      { bytes: g2.data, w: g2.w, h: g2.h, titulo: "Actividad clínica" },
-      { bytes: g3.data, w: g3.w, h: g3.h, titulo: "Pacientes activos al cierre" }
+      { bytes: g1.data, w: g1.w, h: g1.h, titulo: "Vía de parto" },
+      { bytes: g2.data, w: g2.w, h: g2.h, titulo: "Curso de los partos vaginales" },
+      { bytes: g3.data, w: g3.w, h: g3.h, titulo: "Pacientes pendientes al cierre" }
     ];
   }
   function docxBlobOf(turno) {
