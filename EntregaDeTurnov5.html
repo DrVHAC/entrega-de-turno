@@ -17,7 +17,7 @@
   html,body{margin:0; padding:0; background:var(--fondo); color:var(--tinta);
     font-family:"Helvetica Neue","HelveticaNeue",Helvetica,-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;
     -webkit-text-size-adjust:100%}
-  body{padding-bottom:86px}
+  body{padding-bottom:132px}
   header{position:sticky; top:0; z-index:20; background:var(--azul); color:#fff;
     padding:calc(env(safe-area-inset-top) + 12px) 14px 12px; display:flex; align-items:flex-start; justify-content:space-between}
   header .h1{font-size:19px; font-weight:700; letter-spacing:.2px}
@@ -63,7 +63,7 @@
   .row > *{flex:1}
   .row > .short{flex:0 0 96px}
 
-  .bar{position:fixed; left:0; right:0; bottom:0; z-index:20; background:rgba(255,255,255,.97);
+  .bar{position:fixed; left:0; right:0; bottom:0; z-index:30; background:rgba(255,255,255,.97);
     border-top:1px solid var(--linea); padding:9px 12px calc(env(safe-area-inset-bottom) + 9px); display:flex; gap:8px}
 
   .screen{display:none; padding:12px 12px 0}
@@ -1482,8 +1482,14 @@
     indicacionesPuerperio: ["Retractores uterinos", "Analgesia", "Control de sangrado", "Apoyo a la lactancia",
       "Deambulación precoz", "Anticoncepción post-parto", "Control de herida / episiorrafia",
       "Suplementación con fierro", "Vacunas del puerperio", "Control de presión arterial"],
+    paridad: ["Primigesta", "Multípara", "Gran multípara", "Nulípara"],
     patologiasDominga: ["Aborto", "Óbito fetal", "Muerte neonatal", "Embarazo ectópico",
       "Mola hidatiforme", "Parto prematuro con mal resultado perinatal", "Otra pérdida gestacional"],
+    tipoEstadia: ["Interconsulta (paciente de otro servicio)", "Traslado (paciente nuestra)",
+      "Regreso a su servicio tras cirugía"],
+    motivosTraslado: ["Post-operatorio en unidad crítica", "Vigilancia hemodinámica", "Ventilación mecánica",
+      "Manejo de sepsis", "Manejo de preeclampsia severa / HELLP", "Soporte transfusional",
+      "Recuperación anestésica prolongada", "Regreso a su servicio de origen"],
     motivosIC: ["Evaluación obstétrica", "Metrorragia", "Dolor pélvico",
       "Control de embarazo en paciente hospitalizada", "Evaluación preoperatoria",
       "Sospecha de patología anexial", "Seguimiento post-parto", "Evaluación de sangrado post-operatorio"],
@@ -1564,7 +1570,7 @@
     dxPreparto: ["Trabajo de parto fase activa", "Trabajo de parto fase latente", "Inducción de trabajo de parto",
       "Maduración cervical", "RPO", "RPM de pretérmino", "Amenaza de parto prematuro", "Embarazo prolongado",
       "Síndrome hipertensivo del embarazo", "Preeclampsia", "Diabetes gestacional", "RCIU",
-      "Cesárea anterior en trabajo de parto", "Presentación podálica", "Embarazo gemelar",
+      "Cesárea anterior en trabajo de parto", "PVDC (parto vaginal post cesárea)", "Cesárea iterativa programada", "Presentación podálica", "Embarazo gemelar",
       "Disminución de movimientos fetales", "Colestasis intrahepática del embarazo"],
     manejoPreparto: ["Conducción ocitócica", "Inducción con misoprostol", "Maduración cervical con sonda Foley",
       "Tocólisis", "Corticoides para maduración pulmonar", "Neuroprotección con sulfato de magnesio",
@@ -1606,7 +1612,7 @@
     PABELLON:      ["SALA", "OTRO_SERVICIO"],
     PARTO:         ["SALA", "PABELLON"],
     SALA:          ["PABELLON", "OTRO_SERVICIO", "ALTA"],
-    OTRO_SERVICIO: ["PABELLON", "SALA", "ALTA"],
+    OTRO_SERVICIO: ["PABELLON", "SALA", "OTRO_SERVICIO", "ALTA"],
     PERITAJE:      ["ALTA", "OBSERVACION", "PABELLON"],
     ALTA:          []
   };
@@ -1763,6 +1769,25 @@
     return "Tiempo hasta la resolución";
   }
 
+  // Encabezado obstétrico de la paciente: paridad + edad gestacional + cesáreas previas
+  function fmtObst(o) {
+    if (!o) return "";
+    var p = [];
+    if (o.paridad === "Multípara" || o.paridad === "Gran multípara") p.push("M" + (o.paridadN || ""));
+    else if (o.paridad === "Primigesta") p.push("Pgta");
+    else if (o.paridad === "Nulípara") p.push("Nulípara");
+    if (o.cca) p.push(o.cca + "CCA");
+    if (o.egSem) p.push("Emb " + o.egSem + (o.egDias ? "+" + o.egDias : "") + " sem");
+    return p.join(", ");
+  }
+
+  function lecturaCCA(n) {
+    var c = parseInt(n, 10);
+    if (isNaN(c) || c <= 0) return "";
+    if (c === 1) return "1 cesárea previa: candidata a parto vaginal post cesárea (PVDC) si no hay contraindicación.";
+    return c + " cesáreas previas: habitualmente cesárea iterativa.";
+  }
+
   function minutosEntre(h1, h2) {
     if (!h1 || !h2) return null;
     function m(h) { var p = String(h).split(":"); return Number(p[0]) * 60 + Number(p[1]); }
@@ -1815,36 +1840,53 @@
     return v.map(function (x) { return x && x.n ? x.n + (x.r ? ": " + x.r : "") : ""; }).filter(Boolean).join(" · ");
   }
 
+  // La paciente que ENTRÓ como interconsulta pertenece a otro servicio:
+  // podemos operarla, pero nunca es un ingreso nuestro.
+  function esDeOtroServicio(p) {
+    var e0 = (p.etapas || [])[0];
+    return !!(e0 && e0.tipo === "OTRO_SERVICIO" && (e0.datos || {}).tipoEstadia &&
+              (e0.datos.tipoEstadia || "").indexOf("Interconsulta") === 0);
+  }
+
   function derivarSecciones(t5) {
     var out = { meta: t5.meta, urgencia: t5.urgencia,
                 partoIntegral: [], observacion: [], otrasUnidades: [],
                 intervenciones: [], ingresos: [], nacimientos: [], peritajes: [] };
     (t5.pacientes || []).forEach(function (p) {
       var fin = tipoActual(p), id = p.ident || {};
+      var enc = fmtObst(p.obst);
+      function conEnc(dx) { return [enc, dx].filter(Boolean).join(", "); }
       var evol = cronologia(p).filter(function (e) { return e.tipo !== "Traslado"; })
                    .map(function (e) { return (e.hora ? e.hora + " " : "") + e.texto; }).join(" · ");
 
       // --- Pendientes: se derivan del ESTADO FINAL (nunca las cerradas por alta)
       if (fin === "PREPARTO") {
         var d = etapaActual(p).datos || {};
-        out.partoIntegral.push({ sala: d.sala || "", ident: id, diagnosticos: txtLista(d.diagnosticos),
+        out.partoIntegral.push({ sala: d.sala || "", ident: id, diagnosticos: conEnc(txtLista(d.diagnosticos)),
           bishop: d.bishop, mefi: d.mefi, manejo: txtLista(d.manejo),
           evolucion: [txtLista(d.evolucion), evol].filter(Boolean).join(" · "), condicion: d.condicion || "" });
       }
       if (fin === "OBSERVACION") {
         var o = etapaActual(p).datos || {};
-        out.observacion.push({ n: (o.n ? "SOGO " + o.n : ""), ident: id, diagnosticos: txtLista(o.diagnosticos),
+        out.observacion.push({ n: (o.n ? "SOGO " + o.n : ""), ident: id, diagnosticos: conEnc(txtLista(o.diagnosticos)),
           condicion: [txtExam(o.examenes), (o.interconsulta ? "IC " + o.interconsulta + (o.motivoIC ? ": " + o.motivoIC : "") : ""),
                       txtLista(o.manejo), o.condicion || "", evol].filter(Boolean).join(" · ") });
       }
       if (fin === "OTRO_SERVICIO") {
         var u = etapaActual(p).datos || {};
+        var esIC = (u.tipoEstadia || "").indexOf("Interconsulta") === 0;   // regreso y traslado comparten formato
         out.otrasUnidades.push({ cama: u.cama || "", servicio: u.servicio || "", ident: id,
-          diagnosticos: [txtLista(u.motivo), u.diagnosticos || ""].filter(Boolean).join(" — "),
-          condicion: [u.hallazgos || "", txtLista(u.conducta),
-            (u.controlNuestro && u.controlNuestro.indexOf("Sí") === 0
-              ? u.controlNuestro + (u.fechaControl ? " (" + u.fechaControl + ")" : "") : ""),
-            u.condicion || "", evol].filter(Boolean).join(" · ") });
+          tipoEstadia: u.tipoEstadia || "",
+          diagnosticos: esIC
+            ? [txtLista(u.motivo), u.diagnosticos || ""].filter(Boolean).join(" — ")
+            : conEnc([diagnosticoVigente(p), txtLista(u.motivoTraslado)].filter(Boolean).join(" — ")),
+          condicion: esIC
+            ? [u.hallazgos || "", txtLista(u.conducta),
+               (u.controlNuestro && u.controlNuestro.indexOf("Sí") === 0
+                 ? u.controlNuestro + (u.fechaControl ? " (" + u.fechaControl + ")" : "") : ""),
+               u.condicion || "", evol].filter(Boolean).join(" · ")
+            : [txtLista(u.manejo), (txtLista(u.pendientes) ? "Pendientes: " + txtLista(u.pendientes) : ""),
+               u.condicion || "", evol].filter(Boolean).join(" · ") });
       }
 
       // --- Hechos del turno: se derivan de HABER PASADO por la etapa
@@ -1864,7 +1906,9 @@
       //     Es UNO por paciente, con independencia de su recorrido posterior.
       var HOSP = { PREPARTO: 1, PABELLON: 1, SALA: 1 };
       var iIng = -1;
-      for (var z = 0; z < (p.etapas || []).length; z++) { if (HOSP[p.etapas[z].tipo]) { iIng = z; break; } }
+      if (!esDeOtroServicio(p)) {
+        for (var z = 0; z < (p.etapas || []).length; z++) { if (HOSP[p.etapas[z].tipo]) { iIng = z; break; } }
+      }
       if (iIng >= 0) {
         var eIng = p.etapas[iIng], dIng = eIng.datos || {};
         var salaFin = ultimaEtapaDe(p, "SALA");
@@ -1882,7 +1926,7 @@
           ubicacionActual: ETAPAS[fin] || "",
           tipoIngreso: esObst ? "Obstétrica" : "Ginecológica",
           ident: id,
-          diagnosticos: txtLista(dIng.diagnosticos) || dIng.dxPre || dIng.diagnostico || diagnosticoVigente(p),
+          diagnosticos: conEnc(txtLista(dIng.diagnosticos) || dIng.dxPre || dIng.diagnostico || diagnosticoVigente(p)),
           bishop: (pre && pre.datos.bishop) || sf.bishop, mefi: (pre && pre.datos.mefi) || sf.mefi,
           examenGin: sf.examenGin || "", sangrado: sf.sangrado || "", dolorEVA: sf.dolorEVA || "",
           manejo: txtLista(sf.manejo) || txtLista(dIng.manejo) || "",
@@ -1893,7 +1937,7 @@
 
       if (tuvoEtapa(p, "PARTO")) {
         var n = ultimaEtapaDe(p, "PARTO").datos || {};
-        out.nacimientos.push({ nombre: id.nombre || "", ficha: id.ficha || "", diagnostico: txtLista(n.diagnostico) || n.diagnostico || "",
+        out.nacimientos.push({ nombre: id.nombre || "", ficha: id.ficha || "", diagnostico: conEnc(txtLista(n.diagnostico) || n.diagnostico || ""),
           tipoParto: n.tipoParto || "", atendidoPor: n.atendidoPor || "", horaParto: n.horaParto || "",
           incidentes: n.incidentes || "", procedimientosTxt: txtProcParto(n.procedimientos),
           procedimientosResumen: resumenProcParto(n.procedimientos), procedimientos: n.procedimientos || [],
@@ -1933,7 +1977,7 @@
     tuvoEtapa: tuvoEtapa, ultimaEtapaDe: ultimaEtapaDe,
     agregarEtapa: agregarEtapa, agregarEvento: agregarEvento, cronologia: cronologia, diagnosticoVigente: diagnosticoVigente,
     esV4: esV4, adaptarV4: adaptarV4,
-    derivarSecciones: derivarSecciones, txtLista: txtLista, txtExam: txtExam, txtProcParto: txtProcParto, resumenProcParto: resumenProcParto, minutosEntre: minutosEntre, glosa: glosa, GLOSARIO: GLOSARIO, etiquetaIntervalo: etiquetaIntervalo, agrupadasPorUbicacion: agrupadasPorUbicacion
+    derivarSecciones: derivarSecciones, esDeOtroServicio: esDeOtroServicio, fmtObst: fmtObst, lecturaCCA: lecturaCCA, txtLista: txtLista, txtExam: txtExam, txtProcParto: txtProcParto, resumenProcParto: resumenProcParto, minutosEntre: minutosEntre, glosa: glosa, GLOSARIO: GLOSARIO, etiquetaIntervalo: etiquetaIntervalo, agrupadasPorUbicacion: agrupadasPorUbicacion
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.V5Core = api;
@@ -2063,14 +2107,20 @@
                   ["manejo", "Indicaciones al ingreso", "listadet:indicacionesPuerperio", { k: "unidad", v: "Puerperio" }],
                   ["pendientes", "Pendientes para el equipo de sala", "listadet:pendientesSala"],
                   ["condicion", "Condición actual", "area"]],
-    OTRO_SERVICIO: [["servicio", "Servicio", "cat:otrosServicios"], ["cama", "Cama", "short"],
-                  ["motivo", "Motivo de la interconsulta", "lista:motivosIC"],
-                  ["diagnosticos", "Diagnóstico", "area"],
-                  ["hallazgos", "Hallazgos de la evaluación", "area"],
-                  ["conducta", "Conducta", "listadet:conductaIC"],
-                  ["controlNuestro", "¿Requiere control nuestro?", "cat:controlNuestro"],
-                  ["fechaControl", "Fecha del control", "fecha", { k: "controlNuestro", v: "Sí, control al alta" }],
-                  ["condicion", "Observaciones", "area"]],
+    OTRO_SERVICIO: [["tipoEstadia", "Tipo de estadía", "cat:tipoEstadia"],
+                  ["servicio", "Servicio", "cat:otrosServicios"], ["cama", "Cama", "short"],
+                  // --- paciente NUESTRA trasladada (post-operatorio, UCI/UTI): hereda todo
+                  ["motivoTraslado", "Motivo del traslado", "lista:motivosTraslado", { k: "tipoEstadia", v: ["Traslado (paciente nuestra)", "Regreso a su servicio tras cirugía"] }],
+                  ["manejo", "Indicaciones", "listadet:indicacionesGine", { k: "tipoEstadia", v: ["Traslado (paciente nuestra)", "Regreso a su servicio tras cirugía"] }],
+                  ["pendientes", "Pendientes", "listadet:pendientesSala", { k: "tipoEstadia", v: ["Traslado (paciente nuestra)", "Regreso a su servicio tras cirugía"] }],
+                  // --- paciente de OTRO servicio que evaluamos
+                  ["motivo", "Motivo de la interconsulta", "lista:motivosIC", { k: "tipoEstadia", v: "Interconsulta (paciente de otro servicio)" }],
+                  ["diagnosticos", "Diagnóstico", "area", { k: "tipoEstadia", v: "Interconsulta (paciente de otro servicio)" }],
+                  ["hallazgos", "Hallazgos de la evaluación", "area", { k: "tipoEstadia", v: "Interconsulta (paciente de otro servicio)" }],
+                  ["conducta", "Conducta", "listadet:conductaIC", { k: "tipoEstadia", v: "Interconsulta (paciente de otro servicio)" }],
+                  ["controlNuestro", "¿Requiere control nuestro?", "cat:controlNuestro", { k: "tipoEstadia", v: "Interconsulta (paciente de otro servicio)" }],
+                  // --- común
+                  ["condicion", "Condición actual", "area"]],
     PERITAJE:    [["autorizada", "Autorizada por Fiscalía", "check"], ["realizada", "Realizada", "check"],
                   ["condicion", "Observaciones", "area"]],
     ALTA:        [["destino", "Destino", "cat:destinosAlta"], ["condicion", "Indicaciones / control", "area"]]
@@ -2101,7 +2151,7 @@
       var card = document.createElement("div"); card.className = "card open";
       var cuerpo = l.map(function (p) {
         var i = state.turno.pacientes.indexOf(p), id = p.ident || {}, d = (V5.etapaActual(p) || {}).datos || {};
-        var sub = [d.diagnosticos || d.diagnostico || "", d.cama ? "cama " + d.cama : "", d.sala ? "sala " + d.sala : "", d.unidad || d.servicio || ""].filter(Boolean).join(" · ");
+        var sub = [V5.fmtObst(p.obst), V5.txtLista(d.diagnosticos) || d.diagnostico || "", d.cama ? "cama " + d.cama : "", d.sala ? "sala " + d.sala : "", d.unidad || d.servicio || ""].filter(Boolean).join(" · ");
         return '<div class="pac" data-i="' + i + '">' +
           '<div class="nm">' + esc(id.nombre || "(sin nombre)") + (id.edad ? " (" + esc(id.edad) + "a)" : "") +
           (id.ficha ? " · Ficha " + esc(id.ficha) : "") + (id.dau ? " · DAU " + esc(id.dau) : "") + '</div>' +
@@ -2117,7 +2167,13 @@
     if (!hay) host.innerHTML = '<div class="card open"><div class="body" style="padding-top:14px"><div class="empty">Sin pacientes registradas en este turno.</div></div></div>';
 
     $$("[data-toggle]", host).forEach(function (h) { h.addEventListener("click", function () { h.parentElement.classList.toggle("open"); }); });
-    $$(".pac", host).forEach(function (el) { el.addEventListener("click", function () { abrirPaciente(Number(el.getAttribute("data-i"))); }); });
+    $$(".pac", host).forEach(function (el) {
+      var idx = Number(el.getAttribute("data-i"));
+      el.addEventListener("click", function () { abrirPaciente(idx); });
+      var t0 = null;
+      el.addEventListener("touchstart", function () { t0 = setTimeout(function () { state.pacIdx = idx; borrarPacienteActual(); }, 650); }, { passive: true });
+      ["touchend", "touchmove", "touchcancel"].forEach(function (ev) { el.addEventListener(ev, function () { clearTimeout(t0); }, { passive: true }); });
+    });
   }
 
   /* ---------- ficha de paciente ---------- */
@@ -2145,6 +2201,40 @@
         (faltaFicha ? "Paciente ingresada: falta el N° de Ficha. " : "") +
         (faltaDau ? "Paciente en box, observación, peritaje o pendiente: falta el N° de DAU. " : "") +
         (rutOK ? "" : "El RUT no es válido.") + '</div>' : "");
+
+    // --- Antecedentes obstétricos: se escriben UNA vez y encabezan todos los diagnósticos
+    var o = p.obst || {};
+    var esMulti = o.paridad === "Multípara" || o.paridad === "Gran multípara";
+    $("#pacIdent").insertAdjacentHTML("beforeend",
+      '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--linea)">' +
+      '<label class="f" style="color:var(--azul);font-size:12px">Antecedentes obstétricos</label>' +
+      '<div class="row"><div><label class="f">Paridad</label><select data-ob="paridad">' +
+      '<option value=""></option>' + cat("paridad").map(function (x) { return '<option' + (o.paridad === x ? " selected" : "") + '>' + esc(x) + '</option>'; }).join("") + '</select></div>' +
+      (esMulti ? '<div class="short"><label class="f">N° partos</label><input type="text" inputmode="numeric" data-ob="paridadN" value="' + at(o.paridadN) + '"></div>' : '<div class="short"></div>') +
+      '</div>' +
+      '<div class="row" style="margin-top:8px">' +
+      '<div class="short"><label class="f">EG semanas</label><input type="text" inputmode="numeric" data-ob="egSem" value="' + at(o.egSem) + '" placeholder="40"></div>' +
+      '<div class="short"><label class="f">+ días</label><input type="text" inputmode="numeric" data-ob="egDias" value="' + at(o.egDias) + '" placeholder="3"></div>' +
+      '<div class="short"><label class="f">Cesáreas previas</label><input type="text" inputmode="numeric" data-ob="cca" value="' + at(o.cca) + '"></div>' +
+      '</div>' +
+      '<div style="margin-top:7px;font-size:12px;color:var(--azul);font-weight:700" id="obPrev">' + esc(V5.fmtObst(o)) + '</div>' +
+      (V5.lecturaCCA(o.cca) ? '<div id="obCCA" style="margin-top:5px;font-size:11.5px;line-height:1.35;color:' +
+        (parseInt(o.cca, 10) >= 2 ? "#b8860b" : "var(--gris)") + '">' + esc(V5.lecturaCCA(o.cca)) + '</div>' : '<div id="obCCA"></div>') +
+      '</div>');
+    $$("#pacIdent [data-ob]").forEach(function (el) {
+      el.addEventListener("change", function () {
+        p.obst = p.obst || {};
+        $$("#pacIdent [data-ob]").forEach(function (e2) { p.obst[e2.getAttribute("data-ob")] = e2.value.trim(); });
+        guardarPronto();
+        if (el.getAttribute("data-ob") === "paridad") abrirPaciente(state.pacIdx);
+        else {
+          $("#obPrev").textContent = V5.fmtObst(p.obst);
+          var oc = $("#obCCA");
+          if (oc) { oc.textContent = V5.lecturaCCA(p.obst.cca);
+            oc.style.cssText = "margin-top:5px;font-size:11.5px;line-height:1.35;color:" + (parseInt(p.obst.cca, 10) >= 2 ? "#b8860b" : "var(--gris)"); }
+        }
+      });
+    });
 
     // formato en vivo
     var inRut = $('#pacIdent [data-id="rut"]');
@@ -2177,6 +2267,7 @@
       var k = c[0], lab = c[1], tipo = c[2], cond = c[3];
       if (cond) {
         if (typeof cond === "string") { if (d.curso !== cond && d.incidentes !== cond) return; }
+        else if (Array.isArray(cond.v)) { if (cond.v.indexOf(d[cond.k]) < 0) return; }
         else if (d[cond.k] !== cond.v) return;
       }
       h += '<div class="fld">';
@@ -2220,6 +2311,10 @@
     $$("#pacEtapa [data-camaedit]").forEach(function (b) {
       b.addEventListener("click", function () { abrirCatalogos(b.getAttribute("data-camaedit")); });
     });
+    var selTE = $('#pacEtapa [data-d="tipoEstadia"]');
+    if (selTE) selTE.addEventListener("change", function () {
+      var pp = state.turno.pacientes[state.pacIdx]; leerPaciente(); pintarEtapa(pp);
+    });
     var selCtrl = $('#pacEtapa [data-d="controlNuestro"]');
     if (selCtrl) selCtrl.addEventListener("change", function () {
       var pp = state.turno.pacientes[state.pacIdx]; leerPaciente(); pintarEtapa(pp);
@@ -2256,6 +2351,8 @@
   function leerPaciente() {
     var p = state.turno.pacientes[state.pacIdx]; if (!p) return null;
     $$("#pacIdent [data-id]").forEach(function (el) { p.ident[el.getAttribute("data-id")] = el.value.trim(); });
+    if ($("#pacIdent [data-ob]")) { p.obst = p.obst || {};
+      $$("#pacIdent [data-ob]").forEach(function (el) { p.obst[el.getAttribute("data-ob")] = el.value.trim(); }); }
     var e = V5.etapaActual(p);
     if (e) {
       $$("#pacEtapa [data-d]").forEach(function (el) {
@@ -2564,6 +2661,13 @@
     $("#sheet").classList.add("show");
   }
   function cerrarHoja() { $("#sheet").classList.remove("show"); sheetOk = null; }
+  // Diálogos propios: el navegador puede bloquear alert()/confirm()
+  function aviso(titulo, texto) { hoja(titulo, '<p class="hint">' + texto + '</p>', null); }
+  function confirmar(titulo, texto, textoBoton, onOk, peligro) {
+    hoja(titulo, '<p class="hint">' + texto + '</p>' +
+      '<button class="btn ' + (peligro ? "danger" : "pri") + '" id="cfOk" style="width:100%">' + esc(textoBoton) + '</button>', null);
+    $("#cfOk").addEventListener("click", function () { cerrarHoja(); onOk(); });
+  }
   $("#sheetCancel").addEventListener("click", cerrarHoja);
   $("#sheetOk").addEventListener("click", function () { if (sheetOk) sheetOk(); });
 
@@ -2577,8 +2681,18 @@
     setTimeout(function () { elegirEtapa(true); }, 80);
   });
   // Opciones contextuales: qué ofrecer según de dónde viene la paciente
+  var PROPIA = { PREPARTO: 1, PARTO: 1, PABELLON: 1, SALA: 1, OBSERVACION: 1 };
   function opcionesDestino(origen) {
-    var base = V5.destinosValidos(origen).map(function (t) { return { dest: t, txt: V5.ETAPAS[t] || t, datos: {} }; });
+    var base = V5.destinosValidos(origen).map(function (t) {
+      var d = {};
+      // Si la paciente ya es nuestra, pasar a otro servicio es un TRASLADO, no una interconsulta
+      if (t === "OTRO_SERVICIO" && PROPIA[origen]) {
+        var pAct = state.turno.pacientes[state.pacIdx];
+        d.tipoEstadia = (pAct && V5.esDeOtroServicio(pAct)) ? "Regreso a su servicio tras cirugía" : "Traslado (paciente nuestra)";
+      }
+      if (t === "OTRO_SERVICIO" && origen === "INICIO") d.tipoEstadia = "Interconsulta (paciente de otro servicio)";
+      return { dest: t, txt: V5.ETAPAS[t] || t, datos: d };
+    });
     if (origen === "PREPARTO" || origen === "PARTO") {
       var esp = [];
       if (origen === "PREPARTO") {
@@ -2587,8 +2701,11 @@
         esp.push({ dest: "PABELLON", txt: "Pabellón — cesárea de urgencia", datos: { rama: "Obstétrica — cesárea" } });
       }
       esp.push({ dest: "PABELLON", txt: "Pabellón — complicación del parto o puerperio", datos: { rama: "Obstétrica — complicación del parto" } });
+      var pA = state.turno.pacientes[state.pacIdx];
+      if (pA && V5.esDeOtroServicio(pA)) esp.push({ dest: "OTRO_SERVICIO", txt: "Devolver a su servicio tras la cirugía", datos: { tipoEstadia: "Regreso a su servicio tras cirugía" } });
+      else esp.push({ dest: "OTRO_SERVICIO", txt: "Unidad crítica (UCI/UTI) — traslado", datos: { tipoEstadia: "Traslado (paciente nuestra)" } });
       esp.push({ dest: "SALA", txt: "Sala — puerperio", datos: { unidad: "Puerperio" } });
-      base = esp.concat(base.filter(function (b) { return b.dest !== "PARTO" && b.dest !== "PABELLON" && b.dest !== "SALA"; }));
+      base = esp.concat(base.filter(function (b) { return b.dest !== "PARTO" && b.dest !== "PABELLON" && b.dest !== "SALA" && b.dest !== "OTRO_SERVICIO"; }));
     }
     return base;
   }
@@ -2596,7 +2713,7 @@
     var p = state.turno.pacientes[state.pacIdx];
     var origen = inicial ? "INICIO" : V5.tipoActual(p);
     var ops = opcionesDestino(origen);
-    if (!ops.length) { alert("Esta paciente ya está cerrada (alta)."); return; }
+    if (!ops.length) { aviso("Sin destinos", "Esta paciente ya está cerrada (alta)."); return; }
     var cuerpo = ops.map(function (o, i) { return '<button class="opt" data-op="' + i + '">' + esc(o.txt) + '</button>'; }).join("") +
       '<div class="fld" style="margin-top:10px"><label class="f">Hora</label><input type="time" id="hEtapa" value="' + ahoraHHMM() + '"></div>';
     hoja(inicial ? "¿Dónde ingresa la paciente?" : "Siguiente etapa", cuerpo, null);
@@ -2608,10 +2725,10 @@
         guardarPronto(); cerrarHoja(); abrirPaciente(state.pacIdx); pintarMain();
         if (o.luego === "SALA_PUERPERIO") {
           setTimeout(function () {
-            if (confirm("Parto sin incidentes.\n\n¿Pasa a Sala de Puerperio ahora?")) {
+            confirmar("Parto sin incidentes", "¿Pasa a Sala de Puerperio ahora?", "Sí, pasar a Puerperio", function () {
               V5.agregarEtapa(p, "SALA", { unidad: "Puerperio" }, ahoraHHMM());
               guardarPronto(); abrirPaciente(state.pacIdx); pintarMain();
-            }
+            });
           }, 250);
         }
       });
@@ -2652,7 +2769,7 @@
       cronologia: cron, registradoEn: new Date().toLocaleString("es-CL") };
     state.medlegal.push(c); kvSet("v5_medlegal", state.medlegal); badgeML();
     abrirML(state.medlegal.length - 1);
-    setTimeout(function () { alert("Caso creado con " + cron.length + " evento(s) de cronología heredados.\n\nCompleta consentimiento, antecedentes y desenlace."); }, 150);
+    setTimeout(function () { aviso("Caso creado", "Se heredaron <b>" + cron.length + " evento(s)</b> de cronología.<br>Completa consentimiento, antecedentes y desenlace."); }, 150);
   });
   $("#btnEvento").addEventListener("click", function () {
     var p = state.turno.pacientes[state.pacIdx];
@@ -2666,12 +2783,29 @@
   });
   $("#btnGuardarPac").addEventListener("click", function () { leerPaciente(); pintarMain(); ver("#scrMain"); });
   $("#btnPacBack").addEventListener("click", function () { leerPaciente(); pintarMain(); ver("#scrMain"); });
-  $("#btnBorrarPac").addEventListener("click", function () {
-    var p = state.turno.pacientes[state.pacIdx];
-    if (confirm("¿Eliminar a " + (p.ident.nombre || "esta paciente") + " del turno?\n\nNo se puede deshacer.")) {
-      state.turno.pacientes.splice(state.pacIdx, 1); guardarPronto(); pintarMain(); ver("#scrMain");
+  function borrarPacienteActual() {
+    var i = state.pacIdx;
+    if (i == null || i < 0 || !state.turno.pacientes[i]) {
+      hoja("Eliminar paciente", '<p class="hint">No hay una paciente abierta para eliminar.</p>', null);
+      return;
     }
-  });
+    var p = state.turno.pacientes[i];
+    var etapas = (p.etapas || []).map(function (e) { return V5.ETAPAS[e.tipo] || e.tipo; }).join(" → ");
+    // Confirmación con la hoja propia de la app (no depende del diálogo del navegador)
+    hoja("Eliminar paciente",
+      '<p class="hint"><b>' + esc(p.ident.nombre || "(sin nombre)") + '</b>' +
+      (etapas ? '<br>Recorrido: ' + esc(etapas) : "") +
+      '<br><br>Se elimina del turno y no se puede deshacer.</p>' +
+      '<button class="btn danger" id="delOk" style="width:100%">Sí, eliminar</button>',
+      null);
+    $("#delOk").addEventListener("click", function () {
+      state.turno.pacientes.splice(i, 1);
+      state.pacIdx = -1;
+      kvSet("v5_current5", state.turno);
+      cerrarHoja(); pintarMain(); ver("#scrMain");
+    });
+  }
+  $("#btnBorrarPac").addEventListener("click", borrarPacienteActual);
 
   /* ---------- catálogos (RF9) ---------- */
   var catActual = null, catTmp = [];
@@ -2694,7 +2828,9 @@
   $("#catSel").addEventListener("change", function () { leerCat(); catActual = $("#catSel").value; catTmp = cat(catActual).slice(); pintarCat(); });
   $("#catAdd").addEventListener("click", function () { leerCat(); catTmp.push(""); pintarCat(); });
   $("#catRestore").addEventListener("click", function () {
-    if (confirm("¿Restaurar “" + catActual + "” a los valores de fábrica?")) { catTmp = (V5.CATALOGOS_FABRICA[catActual] || []).slice(); pintarCat(); }
+    confirmar("Restaurar lista", "¿Restaurar <b>" + esc(catActual) + "</b> a los valores de fábrica?", "Restaurar", function () {
+      catTmp = (V5.CATALOGOS_FABRICA[catActual] || []).slice(); pintarCat();
+    });
   });
   $("#catSave").addEventListener("click", function () {
     leerCat();
@@ -2824,7 +2960,16 @@
     var c = contadores();
     var PEND0 = { PREPARTO: 1, OBSERVACION: 1, OTRO_SERVICIO: 1 };
     var nPend = (state.turno.pacientes || []).filter(function (p) { return PEND0[V5.tipoActual(p)]; }).length;
-    if (!confirm("ARCHIVAR el turno del " + dmy(state.turno.meta.fecha) + " (" + c.nac + " nac · " + c.interv + " interv · " + c.box + " consultas).\n\n• Queda en HISTORIAL con Word, Excel y Enviar.\n• " + (nPend ? nPend + " paciente(s) pendiente(s) pasan al turno nuevo." : "No hay pacientes pendientes que traspasar.") + "\n• El contador de box vuelve a cero.\n\n¿Ya generaste o enviaste los documentos?")) return;
+    confirmar("Archivar turno",
+      "Turno del <b>" + dmy(state.turno.meta.fecha) + "</b> — " + c.nac + " nac · " + c.interv + " interv · " + c.box + " consultas.<br><br>" +
+      "• Queda en <b>Historial</b> con Word, Excel y Enviar.<br>" +
+      "• " + (nPend ? "<b>" + nPend + " paciente(s) pendiente(s)</b> pasan al turno nuevo." : "No hay pacientes pendientes que traspasar.") + "<br>" +
+      "• El contador de box vuelve a cero.<br><br>" +
+      "¿Ya generaste o enviaste los documentos?",
+      "Archivar turno", archivarTurno);
+  });
+  function archivarTurno() {
+    var c = contadores();
     var snap = JSON.parse(JSON.stringify(state.turno));
     state.history.unshift({ fecha: snap.meta.fecha, resumen: c.nac + " nac · " + c.interv + " interv · " + c.box + " consultas", turno: snap });
     if (state.history.length > 120) state.history.pop();
@@ -2837,12 +2982,11 @@
     var PEND = { PREPARTO: 1, OBSERVACION: 1, OTRO_SERVICIO: 1 };
     var arrastradas = 0;
     (snap.pacientes || []).forEach(function (p) {
-      var fin = V5.tipoActual(p);
-      if (!PEND[fin]) return;
+      if (!PEND[V5.tipoActual(p)]) return;
       var q = JSON.parse(JSON.stringify(p));
       q.id = "P" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-      q.etapas = [JSON.parse(JSON.stringify(V5.etapaActual(p)))];   // conserva su ubicación y datos
-      q.eventos = [];                                               // cronología nueva para el turno nuevo
+      q.etapas = [JSON.parse(JSON.stringify(V5.etapaActual(p)))];
+      q.eventos = [];
       q.recibida = dmy(snap.meta.fecha);
       V5.agregarEvento(q, ahoraHHMM(), "Traslado", "Recibida del turno del " + dmy(snap.meta.fecha));
       nuevo.pacientes.push(q); arrastradas++;
@@ -2850,8 +2994,8 @@
     state.turno = nuevo; kvSet("v5_current5", state.turno);
     state.firmaEnt = null; kvSet("v5_firmaEnt", null);
     pintarMain(); pintarDatos(); ver("#scrMain");
-    if (arrastradas) alert("Turno archivado.\n\n" + arrastradas + " paciente(s) pendiente(s) pasaron al turno nuevo con su ubicación y datos.");
-  });
+    if (arrastradas) aviso("Turno archivado", arrastradas + " paciente(s) pendiente(s) pasaron al turno nuevo con su ubicación y datos.");
+  }
   $("#btnHist").addEventListener("click", function () { pintarHist(); ver("#scrHist"); });
   $("#histBack").addEventListener("click", function () { ver("#scrMain"); });
   function pintarHist() {
@@ -2867,7 +3011,9 @@
       $("[data-x]", el).addEventListener("click", function () { bajar(xlsxBlob(h.turno), nombre(h.turno, "xlsx")); });
       $("[data-e]", el).addEventListener("click", function () { enviar(h.turno); });
       $("[data-del]", el).addEventListener("click", function () {
-        if (confirm("¿ELIMINAR el turno del " + dmy(h.fecha) + "?\n\nNo se puede deshacer.")) { state.history.splice(i, 1); kvSet("v5_history", state.history); pintarHist(); }
+        confirmar("Eliminar turno", "Turno del <b>" + dmy(h.fecha) + "</b>.<br>No se puede deshacer.", "Sí, eliminar", function () {
+          state.history.splice(i, 1); kvSet("v5_history", state.history); pintarHist();
+        }, true);
       });
       host.appendChild(el);
     });
@@ -2902,7 +3048,7 @@
     var d = L.cv.toDataURL("image/png");
     var f = { data: d, w: L.cv.width, h: L.cv.height };
     if (clave === "firmaSal") { state.firmaSal = f; kvSet("v5_firmaSal", f); } else { state.firmaEnt = f; kvSet("v5_firmaEnt", f); }
-    guardarPronto(); alert("Firma guardada.");
+    guardarPronto(); aviso("Firma", "Firma guardada.");
   }
   $("#saveSal").addEventListener("click", function () { guardarFirma(LSal, "firmaSal", ["nombreSaliente", "rutSaliente", "#fNomSal", "#fRutSal"]); });
   $("#saveEnt").addEventListener("click", function () { guardarFirma(LEnt, "firmaEnt", ["entrante", "rutEntrante", "#fNomEnt", "#fRutEnt"]); });
@@ -2941,8 +3087,6 @@
   });
 
   /* ---------- pendientes de integrar (avisos honestos) ---------- */
-  $("#btnDominga").addEventListener("click", function () { alert("El módulo Ley Dominga se integra en el siguiente paso de la v5.\n\nMientras tanto sigue disponible en la versión en producción."); });
-  $("#btnMedLegal").addEventListener("click", function () { alert("El registro médico-legal se integra en el siguiente paso de la v5, y tomará la cronología de la paciente automáticamente."); });
 
 
   /* ================= LEY DOMINGA ================= */
@@ -2968,7 +3112,9 @@
       $("[data-e]", el).addEventListener("click", function () { editarDominga(i); });
       $("[data-ok]", el).addEventListener("click", function () { c.hecho = !c.hecho; kvSet("v5_dominga", state.dominga); pintarDominga(); badgeDom(); });
       $("[data-x]", el).addEventListener("click", function () {
-        if (confirm("¿Eliminar el seguimiento de " + (c.nombre || "esta paciente") + "?")) { state.dominga.splice(i, 1); kvSet("v5_dominga", state.dominga); pintarDominga(); badgeDom(); }
+        confirmar("Eliminar seguimiento", "¿Eliminar el seguimiento de <b>" + esc(c.nombre || "esta paciente") + "</b>?", "Sí, eliminar", function () {
+          state.dominga.splice(i, 1); kvSet("v5_dominga", state.dominga); pintarDominga(); badgeDom();
+        }, true);
       });
       host.appendChild(el);
     });
@@ -3094,9 +3240,10 @@
     else dl(mlBlob(c), mlNombre(c));
   });
   $("#mlDel").addEventListener("click", function () {
-    if (mlIdx >= 0 && confirm("¿Eliminar este registro médico-legal?\n\nNo se puede deshacer.")) {
+    if (mlIdx < 0) return;
+    confirmar("Eliminar registro", "Se elimina este registro médico-legal.<br>No se puede deshacer.", "Sí, eliminar", function () {
       state.medlegal.splice(mlIdx, 1); kvSet("v5_medlegal", state.medlegal); badgeML(); pintarML(); ver("#scrML");
-    }
+    }, true);
   });
 
   /* ---------- arranque ---------- */
