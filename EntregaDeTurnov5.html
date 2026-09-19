@@ -79,6 +79,16 @@
     width:100%; border:1px solid var(--linea); border-radius:10px; padding:9px 10px; font-size:13.5px;
     background:var(--blanco); color:var(--tinta); -webkit-appearance:none; line-height:1.25}
   textarea{min-height:64px; resize:vertical; line-height:1.35}
+  /* scores plegables: un botón que se despliega */
+  details.score{border:1px solid var(--linea); border-radius:10px; background:#fbfcfe; margin-bottom:2px}
+  details.score > summary{list-style:none; cursor:pointer; padding:10px 12px; font-size:13px; font-weight:700;
+    color:var(--azul); display:flex; align-items:center; justify-content:space-between; gap:8px}
+  details.score > summary::-webkit-details-marker{display:none}
+  details.score > summary:after{content:"▸"; font-size:11px; color:var(--gris); transition:transform .15s}
+  details.score[open] > summary:after{transform:rotate(90deg)}
+  details.score > summary .res{font-weight:600; font-size:11.5px; color:var(--gris); text-align:right; flex:1}
+  details.score > div{padding:0 10px 10px}
+
   /* listas de selección: densas y legibles */
   .lista{border:1px solid var(--linea); border-radius:10px; padding:6px 8px; background:#fbfcfe}
   .lista label{display:flex; align-items:center; gap:8px; font-size:13px; padding:3px 0; line-height:1.3}
@@ -927,7 +937,7 @@
       novedades.push("Peritaje médico-legal — "+(x.nombre||"")+(x.dau?" (DAU "+x.dau+")":"")+(e.length?" — "+e.join(", "):"")+"."); });
 
     var pend=[];
-    pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:[fmtBishopCompacto(x),fmtMefiCompacto(x),x.condicion||""].filter(Boolean).join("\n"), manejo:[x.manejo||"",(x.evolucion?"Evol.: "+x.evolucion:"")].filter(Boolean).join("\n")}); });
+    pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:[fmtBishopCompacto(x),fmtMefiCompacto(x),(x.gibbsTxt||""),x.condicion||""].filter(Boolean).join("\n"), manejo:[x.manejo||"",(x.evolucion?"Evol.: "+x.evolucion:"")].filter(Boolean).join("\n")}); });
     obs.forEach(function(x){ pend.push({ubic:"Observación"+(x.n?" "+x.n:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
     otras.forEach(function(x){ pend.push({ubic:(x.servicio?x.servicio+" ":"")+(x.cama||"Otra unidad"), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
     return { fecha:meta.fecha||"", staff:staff,
@@ -1593,6 +1603,57 @@
     return (CATALOGOS_FABRICA[clave] || []).slice();
   }
 
+  /* ---------- MOTOR DE ESCALAS CLÍNICAS ------------------------------------
+     Cada escala declara sus ítems y su interpretación. La interfaz las dibuja
+     de forma genérica: marcar clics -> puntaje -> lectura clínica.           */
+  var ESCALAS = {
+    gibbs: {
+      nombre: "Criterios de Gibbs",
+      subtitulo: "Corioamnionitis clínica",
+      ambito: ["OBSERVACION", "PREPARTO", "SALA"],
+      obligatorio: { k: "fiebre", t: "Fiebre materna ≥ 37,8 °C", nota: "Criterio indispensable" },
+      items: [
+        { k: "taqM", t: "Taquicardia materna > 100 lpm" },
+        { k: "taqF", t: "Taquicardia fetal > 160 lpm" },
+        { k: "sensU", t: "Sensibilidad uterina" },
+        { k: "laPur", t: "Líquido amniótico purulento o de mal olor" },
+        { k: "leuco", t: "Leucocitosis > 15.000/mm³" }
+      ],
+      evaluar: function (v) {
+        v = v || {};
+        var menores = this.items.filter(function (i) { return v[i.k]; }).length;
+        if (!v.fiebre) {
+          return { n: menores, texto: menores ? "Sin fiebre: no se cumplen los criterios de Gibbs (" + menores + " criterio(s) menor(es))." : "",
+                   nivel: "gris" };
+        }
+        if (menores >= 2) return { n: menores, texto: "Criterios de Gibbs POSITIVOS (fiebre + " + menores + " criterios menores): corioamnionitis clínica.", nivel: "rojo" };
+        return { n: menores, texto: "Fiebre materna con " + menores + " criterio(s) menor(es): no cumple Gibbs. Buscar otro foco y reevaluar.", nivel: "ambar" };
+      }
+    },
+    choque: {
+      nombre: "Índice de choque",
+      subtitulo: "Hemorragia obstétrica (FC / PAS)",
+      ambito: ["PARTO", "PABELLON", "SALA", "OBSERVACION"],
+      numericos: [{ k: "fc", t: "FC (lpm)" }, { k: "pas", t: "PAS (mmHg)" }],
+      evaluar: function (v) {
+        v = v || {};
+        var fc = parseFloat(v.fc), pas = parseFloat(v.pas);
+        if (!fc || !pas) return { texto: "", nivel: "gris" };
+        var i = fc / pas, r = Math.round(i * 100) / 100;
+        if (i >= 1.7) return { n: r, texto: "Índice de choque " + r + ": compromiso grave. Activar código rojo y transfusión.", nivel: "rojo" };
+        if (i >= 1.0) return { n: r, texto: "Índice de choque " + r + ": alterado. Reposición agresiva y vigilancia estrecha.", nivel: "rojo" };
+        if (i >= 0.9) return { n: r, texto: "Índice de choque " + r + ": límite. Vigilar y repetir.", nivel: "ambar" };
+        return { n: r, texto: "Índice de choque " + r + ": dentro de rango normal.", nivel: "verde" };
+      }
+    }
+  };
+  function evaluarEscala(id, v) {
+    var e = ESCALAS[id]; if (!e) return null;
+    var r = e.evaluar(v || {});
+    return { id: id, nombre: e.nombre, texto: r.texto, nivel: r.nivel, n: r.n };
+  }
+  function fmtEscala(id, v) { var r = evaluarEscala(id, v); return r && r.texto ? r.texto : ""; }
+
   /* ---------- 2. MÁQUINA DE ESTADOS --------------------------------------- */
   var ETAPAS = {
     OBSERVACION: "Observación (SOGO)",
@@ -1863,13 +1924,13 @@
       if (fin === "PREPARTO") {
         var d = etapaActual(p).datos || {};
         out.partoIntegral.push({ sala: d.sala || "", ident: id, diagnosticos: conEnc(txtLista(d.diagnosticos)),
-          bishop: d.bishop, mefi: d.mefi, manejo: txtLista(d.manejo),
+          bishop: d.bishop, mefi: d.mefi, gibbsTxt: fmtEscala("gibbs", d.gibbs), manejo: txtLista(d.manejo),
           evolucion: [txtLista(d.evolucion), evol].filter(Boolean).join(" · "), condicion: d.condicion || "" });
       }
       if (fin === "OBSERVACION") {
         var o = etapaActual(p).datos || {};
         out.observacion.push({ n: (o.n ? "SOGO " + o.n : ""), ident: id, diagnosticos: conEnc(txtLista(o.diagnosticos)),
-          condicion: [txtExam(o.examenes), (o.interconsulta ? "IC " + o.interconsulta + (o.motivoIC ? ": " + o.motivoIC : "") : ""),
+          condicion: [fmtEscala("gibbs", o.gibbs), txtExam(o.examenes), (o.interconsulta ? "IC " + o.interconsulta + (o.motivoIC ? ": " + o.motivoIC : "") : ""),
                       txtLista(o.manejo), o.condicion || "", evol].filter(Boolean).join(" · ") });
       }
       if (fin === "OTRO_SERVICIO") {
@@ -1943,7 +2004,7 @@
           procedimientosResumen: resumenProcParto(n.procedimientos), procedimientos: n.procedimientos || [],
           otroProc: n.otroProc || "", resultado: n.resultado,
           rnTipo: n.rnTipo, rnSemanas: n.rnSemanas, rnPeso: n.rnPeso, rnApgar: n.rnApgar, infoRN: n.infoRN,
-          estadoMaterno: n.estadoMaterno || "", novedadRN: n.novedadRN || "",
+          estadoMaterno: n.estadoMaterno || "", novedadRN: n.novedadRN || "", choqueTxt: fmtEscala("choque", n.choque),
           comentarios: [txtLista(n.comentarios) || n.comentarios || "",
                         n.estadoMaterno && n.estadoMaterno !== "Estable" ? "Madre: " + n.estadoMaterno.toLowerCase() : "",
                         n.novedadRN ? "Novedad neonatal: " + n.novedadRN : ""].filter(Boolean).join(". ") });
@@ -1969,6 +2030,7 @@
   }
 
   var api = {
+    ESCALAS: ESCALAS, evaluarEscala: evaluarEscala, fmtEscala: fmtEscala,
     CATALOGOS_FABRICA: CATALOGOS_FABRICA, catalogosPorDefecto: catalogosPorDefecto,
     catalogoLeer: catalogoLeer, catalogoRestaurar: catalogoRestaurar,
     ETAPAS: ETAPAS, TRANSICIONES: TRANSICIONES, destinosValidos: destinosValidos, cierraCaso: cierraCaso,
@@ -2083,10 +2145,12 @@
     OBSERVACION: [["n", "Cama SOGO", "sogo"], ["diagnosticos", "Diagnóstico", "area"],
                   ["examenes", "Exámenes solicitados", "examenes"],
                   ["interconsulta", "Interconsulta", "cat:otrosServicios"], ["motivoIC", "Motivo de la interconsulta", "text"],
+                  ["gibbs", "Criterios de Gibbs", "escala:gibbs"],
                   ["manejo", "Manejo", "area"], ["condicion", "Condición actual", "area"]],
     PREPARTO:    [["sala", "Sala de preparto", "sala"],
                   ["diagnosticos", "Diagnósticos", "lista:dxPreparto"],
                   ["bishop", "Tacto vaginal · Bishop", "bishop"], ["mefi", "MEFI", "mefi"],
+                  ["gibbs", "Criterios de Gibbs", "escala:gibbs"],
                   ["manejo", "Manejo", "listadet:manejoPreparto"],
                   ["condicion", "Condición / información anexa", "area"]],
     PABELLON:    [["rama", "Tipo de cirugía", "cat:ramasPabellon"],
@@ -2105,6 +2169,7 @@
                   ["incidentes", "Curso del parto", "cat:cursoParto"],
                   ["procedimientos", "Procedimientos e incidentes", "procparto", "Con incidentes"],
                   ["resultado", "Resultado (RN)", "rn"],
+                  ["choque", "Índice de choque", "escala:choque"],
                   ["estadoMaterno", "Estado materno al cierre", "cat:estadoMaterno"],
                   ["novedadRN", "Novedad neonatal informada posteriormente", "area"],
                   ["comentarios", "Puerperio inmediato", "lista:puerperio"]],
@@ -2307,10 +2372,13 @@
       else if (tipo === "hora") h += '<label class="f">' + lab + '</label><input type="time" data-d="' + k + '" value="' + at(d[k]) + '">';
       else if (tipo === "fecha") h += '<label class="f">' + lab + '</label><input type="date" data-d="' + k + '" value="' + at(d[k]) + '">';
       else if (tipo === "procparto") h += '<label class="f">' + lab + '</label><div id="ppHost"></div>';
+      else if (tipo.indexOf("escala:") === 0)
+        h += '<details class="score"><summary>' + lab + '<span class="res" data-res="' + tipo.split(":")[1] + '"></span></summary>' +
+          '<div data-escala="' + tipo.split(":")[1] + '" data-val=\'' + JSON.stringify(d[k] || {}) + '\'></div></details>';
       else if (tipo === "examenes") h += '<label class="f">' + lab + '</label><div id="examHost"></div>';
       else if (tipo === "procs") h += '<label class="f">' + lab + '</label><div id="procsHost"></div>';
-      else if (tipo === "bishop") h += '<label class="f">' + lab + '</label><div id="bishopHost"></div>';
-      else if (tipo === "mefi") h += '<label class="f">' + lab + '</label><div id="mefiHost"></div>';
+      else if (tipo === "bishop") h += '<details class="score"><summary>' + lab + '<span class="res" data-res="bishop"></span></summary><div id="bishopHost"></div></details>';
+      else if (tipo === "mefi") h += '<details class="score"><summary>' + lab + '<span class="res" data-res="mefi"></span></summary><div id="mefiHost"></div></details>';
       else if (tipo === "rn") h += '<label class="f">' + lab + '</label><div id="rnHost"></div>';
       h += '</div>';
     });
@@ -2341,6 +2409,7 @@
       var pp = state.turno.pacientes[state.pacIdx];
       leerPaciente(); pintarEtapa(pp);
     });
+    $$("[data-escala]", host).forEach(function (hh) { pintarEscala(hh); });
     $$("[data-listaHost]", host).forEach(function (hh) { pintarLista(hh, d[hh.getAttribute("data-listaHost")] || []); });
     if ($("#ppHost")) pintarProcParto(d.procedimientos || []);
     if ($("#examHost")) pintarExamenes(d.examenes || []);
@@ -2367,6 +2436,10 @@
       $$("#pacEtapa [data-d]").forEach(function (el) {
         var k = el.getAttribute("data-d");
         e.datos[k] = (el.type === "checkbox") ? el.checked : el.value.trim();
+      });
+      $$("#pacEtapa [data-escala]").forEach(function (hh) {
+        var kesc = hh.getAttribute("data-escala");
+        e.datos[kesc === "gibbs" ? "gibbs" : kesc] = leerEscala(hh);
       });
       $$("#pacEtapa [data-listaHost]").forEach(function (hh) {
         var k2 = hh.getAttribute("data-listaHost"), antes2 = e.datos[k2] || [], ahora2 = leerLista(hh);
@@ -2404,6 +2477,48 @@
   }
 
   /* ---------- sub-bloques ---------- */
+  // --- Escalas clínicas: se dibujan solas desde su definición
+  function pintarEscala(host) {
+    var id = host.getAttribute("data-escala");
+    var def = V5.ESCALAS[id]; if (!def) return;
+    var v = JSON.parse(host.getAttribute("data-val") || "{}");
+    var r = V5.evaluarEscala(id, v);
+    var col = { rojo: "#c0392b", ambar: "#b8860b", verde: "#1e8e5a", gris: "#5f6368" }[r.nivel] || "#5f6368";
+    var h = '<div class="lista">';
+    if (def.obligatorio) {
+      h += '<label style="font-weight:700"><input type="checkbox" data-es="' + def.obligatorio.k + '"' + (v[def.obligatorio.k] ? " checked" : "") + '> ' + esc(def.obligatorio.t) + '</label>' +
+        (def.obligatorio.nota ? '<div style="font-size:10.5px;color:var(--gris);margin:0 0 6px 26px">' + esc(def.obligatorio.nota) + '</div>' : "");
+    }
+    (def.items || []).forEach(function (i2) {
+      h += '<label><input type="checkbox" data-es="' + i2.k + '"' + (v[i2.k] ? " checked" : "") + '> ' + esc(i2.t) + '</label>';
+    });
+    if (def.numericos) {
+      h += '<div class="row" style="margin-top:4px">' + def.numericos.map(function (n2) {
+        return '<div><label class="f">' + esc(n2.t) + '</label><input class="det" type="text" inputmode="numeric" data-es="' + n2.k + '" value="' + at(v[n2.k]) + '"></div>';
+      }).join("") + '</div>';
+    }
+    h += '<div style="margin-top:8px;padding:9px;border-radius:9px;background:#f4f6f9;text-align:center">' +
+      '<div style="font-size:10.5px;color:var(--gris);text-transform:uppercase;letter-spacing:.4px">' + esc(def.nombre) + (def.subtitulo ? " · " + esc(def.subtitulo) : "") + '</div>' +
+      '<div style="font-size:12.5px;font-weight:600;color:' + col + ';margin-top:3px;line-height:1.35">' + esc(r.texto || "Marca los criterios presentes") + '</div></div></div>';
+    host.innerHTML = h;
+    resumenScore(id, r.texto ? (r.n != null ? String(r.n) + " · " : "") + (r.nivel === "rojo" ? "alterado" : r.nivel === "ambar" ? "límite" : r.nivel === "verde" ? "normal" : "") : "");
+    $$("[data-es]", host).forEach(function (el) {
+      el.addEventListener("change", function () {
+        host.setAttribute("data-val", JSON.stringify(leerEscala(host)));
+        pintarEscala(host);
+      });
+    });
+  }
+  function resumenScore(clave, txt) {
+    var el = $('[data-res="' + clave + '"]');
+    if (el) el.textContent = txt || "sin datos";
+  }
+  function leerEscala(host) {
+    var v = {};
+    $$("[data-es]", host).forEach(function (e2) { v[e2.getAttribute("data-es")] = (e2.type === "checkbox") ? e2.checked : e2.value.trim(); });
+    return v;
+  }
+
   function pintarLista(host, sel) {
     var clave = host.getAttribute("data-cat2"), conDet = !!host.getAttribute("data-det");
     var prev = {}, otro = "";
@@ -2602,6 +2717,7 @@
       '<div style="font-size:11.5px;color:var(--gris)">Score de Bishop</div>' +
       '<div style="font-size:21px;font-weight:800;color:' + col + '">' + (sc == null ? "—" : sc + " / 13") + '</div>' +
       '<div style="font-size:12px;color:' + col + ';font-weight:600">' + (DocxCore.bishopInterpretacion(sc, ctx) || "Completa los campos") + '</div></div>';
+    resumenScore("bishop", DocxCore.fmtBishopCompacto({ bishop: bishopSt }));
     $$("#bishopHost [data-bi]").forEach(function (el) { el.addEventListener("change", function () { pintarBishop(leerBishop()); }); });
   }
   function leerBishop() { var b = JSON.parse(JSON.stringify(bishopSt || {})); $$("#bishopHost [data-bi]").forEach(function (e) { b[e.getAttribute("data-bi")] = e.value; }); return b; }
@@ -2622,6 +2738,7 @@
       '<div style="margin-top:10px;padding:10px;border-radius:10px;background:#f4f6f9;text-align:center">' +
       '<div style="font-size:11.5px;color:var(--gris)">Clasificación MEFI</div>' +
       '<div style="font-size:21px;font-weight:800;color:' + col + '">' + (cat2 ? "Categoría " + ["", "I", "II", "III"][cat2] : "—") + '</div></div>';
+    resumenScore("mefi", DocxCore.fmtMefiCompacto({ mefi: mefiSt }));
     $$("#mefiHost [data-me]").forEach(function (el) { el.addEventListener("change", function () { pintarMefi(leerMefi()); }); });
   }
   function leerMefi() { var m = JSON.parse(JSON.stringify(mefiSt || {})); $$("#mefiHost [data-me]").forEach(function (e) { m[e.getAttribute("data-me")] = e.value; }); return m; }
