@@ -2052,7 +2052,16 @@
     if (!t) return { ficha: false, dau: false };
     return HOSPITALIZADA[t] ? { ficha: true, dau: false } : { ficha: false, dau: true };
   }
-  function ver(id) { $$(".screen").forEach(function (s) { s.classList.remove("on"); }); $(id).classList.add("on"); window.scrollTo(0, 0); }
+  function ver(id) {
+    $$(".screen").forEach(function (s) { s.classList.remove("on"); });
+    $(id).classList.add("on");
+    // La barra Archivar/Word/Excel/Enviar es del TURNO: solo en la pantalla principal
+    var esMain = (id === "#scrMain");
+    var bar = $(".bar");
+    if (bar) bar.style.display = esMain ? "flex" : "none";
+    document.body.style.paddingBottom = esMain ? "132px" : "24px";
+    window.scrollTo(0, 0);
+  }
 
   /* ---------- catálogos ---------- */
   function cat(clave) { return V5.catalogoLeer(state.turno && state.turno.catalogos, clave); }
