@@ -3246,6 +3246,43 @@
     }, true);
   });
 
+  /* ---------- encadenado de campos: el visto salta al siguiente ---------- */
+  function camposEnfocables(cont) {
+    return $$("input, select, textarea", cont).filter(function (el) {
+      return el.type !== "checkbox" && el.type !== "button" && !el.disabled && el.offsetParent !== null;
+    });
+  }
+  // El teclado muestra "siguiente" en vez de "listo" (salvo en el último campo)
+  function marcarTeclas(cont) {
+    var l = camposEnfocables(cont);
+    l.forEach(function (el, i) {
+      if (el.tagName === "TEXTAREA") return;          // en área de texto, Enter es salto de línea
+      el.setAttribute("enterkeyhint", i === l.length - 1 ? "done" : "next");
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    var t = e.target;
+    if (!t || !t.tagName) return;
+    if (t.tagName === "TEXTAREA") return;             // respetamos el salto de línea
+    if (t.tagName !== "INPUT" && t.tagName !== "SELECT") return;
+    var cont = t.closest(".sheet.show") || t.closest(".screen.on") || document;
+    var l = camposEnfocables(cont), i = l.indexOf(t);
+    if (i < 0) return;
+    e.preventDefault();
+    var sig = l[i + 1];
+    if (sig) { sig.focus(); if (sig.select) try { sig.select(); } catch (x) {} }
+    else t.blur();                                    // último campo: cierra el teclado
+  });
+  // Los formularios se generan sobre la marcha: se marcan al enfocar
+  var _ultCont = null;
+  document.addEventListener("focusin", function (e) {
+    var t = e.target; if (!t || !t.tagName) return;
+    if (t.tagName !== "INPUT" && t.tagName !== "SELECT" && t.tagName !== "TEXTAREA") return;
+    var cont = t.closest(".sheet.show") || t.closest(".screen.on");
+    if (cont && cont !== _ultCont) { _ultCont = cont; marcarTeclas(cont); }
+  });
+
   /* ---------- arranque ---------- */
   (async function () {
     try { await abrir(); } catch (e) {}
