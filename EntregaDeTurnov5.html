@@ -112,6 +112,18 @@
   .paso{font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
         color:var(--azul); margin:16px 0 8px; padding-bottom:5px; border-bottom:1px solid var(--linea)}
   .paso:first-child{margin-top:4px}
+  /* La evolución es la acción más usada del turno: se nota o no se usa */
+  .btn.evo{width:100%; background:var(--azul); color:#fff; border-color:var(--azul);
+           font-size:15.5px; font-weight:800; padding:14px 12px; letter-spacing:.01em}
+  .btn.evo:active{filter:brightness(.92)}
+  .gat{margin-top:10px; padding:10px 11px; border:1px dashed #d8a657; border-radius:10px; background:#fdf7ec}
+  .gat .t{font-size:11.5px; color:#8a6420; line-height:1.4; margin-bottom:7px}
+  .gat .btn{margin:0 5px 5px 0}
+  .acc{margin-top:12px; padding-top:11px; border-top:1px solid var(--linea)}
+  .acc .t{font-size:10.5px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
+          color:var(--gris); margin-bottom:8px}
+  .acc .btn{margin:0 5px 5px 0}
+  .ev .dif{font-size:10.5px; color:var(--gris); font-style:italic}
   details.sugcalc{margin-top:14px; border-style:dashed}
   details.sugcalc > summary{color:var(--gris)}
   details.sugcalc .btn{margin:0 5px 5px 0}
@@ -133,6 +145,10 @@
   .sheet.show{display:flex}
   .sheet .inner{background:var(--blanco); width:100%; max-width:560px; border-radius:18px 18px 0 0;
     padding:16px 16px calc(env(safe-area-inset-bottom) + 16px); max-height:92vh; overflow:auto}
+  /* Guardar y Cancelar quedan siempre a la vista: con el teclado abierto y un
+     formulario largo, el botón más usado del turno caía bajo el pliegue. */
+  .sheet .inner > .row.acciones{position:sticky; bottom:0; z-index:3; margin-top:12px;
+    background:var(--blanco); padding:10px 0 2px; border-top:1px solid var(--linea)}
   .sheet h3{margin:2px 0 14px; font-size:16.5px; color:var(--azul); font-weight:700}
   .sheet .opt{display:block; width:100%; text-align:left; border:1px solid var(--linea); background:#fbfcfe;
     border-radius:12px; padding:13px 14px; margin-bottom:8px; font-size:15px; font-weight:600; color:var(--tinta)}
@@ -151,7 +167,7 @@
     <button id="btnFirma">Firma</button>
     <button id="btnHist">Historial</button>
   </div>
-  <div class="ver">v5.7</div>
+  <div class="ver">v5.9</div>
 </header>
 
 <!-- ===== PRINCIPAL ===== -->
@@ -199,11 +215,9 @@
       <div id="pacIdent"></div>
       <div id="pacEtapa"></div>
 
-      <div style="margin-top:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <label class="f" style="margin:0">Línea de tiempo</label>
-          <button class="btn sm ghost" id="btnEvento">+ Evento</button>
-        </div>
+      <div style="margin-top:16px">
+        <button class="btn evo" id="btnEvento">✚ Ingresa Nueva Evolución</button>
+        <label class="f" style="margin:14px 0 8px">Línea de tiempo</label>
         <div class="tl" id="pacTL"></div>
       </div>
 
@@ -342,7 +356,7 @@
 <div class="sheet" id="sheet"><div class="inner">
   <h3 id="sheetTitle">—</h3>
   <div id="sheetBody"></div>
-  <div class="row" style="margin-top:12px">
+  <div class="row acciones">
     <button class="btn ghost" id="sheetCancel">Cancelar</button>
     <button class="btn pri" id="sheetOk">Guardar</button>
   </div>
@@ -1962,7 +1976,9 @@
       "Profilaxis antitrombótica", "Sonda Foley", "Control en 24 h"],
     anestesia: ["Raquídea", "Peridural", "General", "Local", "Sedación", "Combinada"],
     otrosServicios: ["UCI", "UTI", "Intermedio quirúrgico", "Medicina", "Cirugía", "Pediatría", "Psiquiatría", "Otro"],
-    tiposEvento: ["Evolución", "Resultado", "Solicitud", "Procedimiento", "Interconsulta", "Indicación", "Traslado"],
+    // "Evolución" no está: toda entrada YA es una evolución. El tipo solo la
+    // sub-clasifica cuando hace falta; en blanco es el relato llano.
+    tiposEvento: ["Resultado", "Solicitud", "Procedimiento", "Interconsulta", "Indicación", "Traslado"],
     examenes: ["Hemograma", "PCR", "Función renal (BUN/creatinina)", "Perfil hepático", "Perfil bioquímico",
       "Coagulación (TP/TTPA/INR)", "Grupo y Rh", "β-hCG", "Orina completa", "Urocultivo",
       "IPC (índice proteinuria/creatininuria)", "Proteinuria 24 h",
@@ -2627,10 +2643,67 @@
     agregarEvento(p, hora, "Traslado", "→ " + (ETAPAS[tipo] || tipo));
     return p;
   }
-  function agregarEvento(p, hora, tipo, texto) {
+  // hora = hora DEL HECHO (editable: se escribe después, no durante).
+  // escritoEn = hora en que realmente se tecleó. En un registro médico-legal,
+  // una entrada retroactiva que solo declara la hora del hecho vale menos que
+  // una que además dice cuándo se escribió. Se guarda siempre, se muestra solo
+  // en el módulo médico-legal.
+  function agregarEvento(p, hora, tipo, texto, escritoEn) {
     p.eventos = p.eventos || [];
-    p.eventos.push({ hora: hora || "", tipo: tipo || "Evolución", texto: texto || "" });
+    // Sin tipo elegido la entrada ES una evolución: nunca queda sin etiqueta,
+    // porque la cronología y el caso médico-legal la muestran por tipo.
+    p.eventos.push({ hora: hora || "", tipo: tipo || "Evolución", texto: texto || "",
+                     escritoEn: escritoEn || hhmmAhora() });
     return p;
+  }
+  function hhmmAhora() {
+    var d = new Date();
+    return ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+  }
+  // Diferido = se escribió a una hora distinta de la del hecho (más de 2 minutos).
+  function eventoDiferido(e) {
+    if (!e || !e.hora || !e.escritoEn || e.hora === e.escritoEn) return false;
+    function m(h) { var x = String(h).split(":"); return (+x[0]) * 60 + (+x[1] || 0); }
+    return Math.abs(m(e.escritoEn) - m(e.hora)) > 2;
+  }
+
+  /* ---------- GATILLOS: del relato a la acción estructurada ----------------
+     El texto libre no se puede contar. Si escribe «se realiza cesárea» en prosa,
+     el contador de cesáreas no se mueve y la hoja oficial queda mal. Estos
+     gatillos detectan la palabra y OFRECEN el botón que corresponde.
+     Ofrecen, nunca registran solos: la decisión sigue siendo del médico.        */
+  var GATILLOS = [
+    { re: /ces[áa]rea|f[óo]rceps|nacimiento|naci[óo]|nace\b|reci[ée]n nacid|\bRN\b|apgar/i,
+      accion: "parto", txt: "Registrar el nacimiento" },
+    { re: /pabell[óo]n|quir[óo]fano|laparotom|histerectom|legrado|B-?Lynch|reinterven/i,
+      accion: "etapa", txt: "Llevar a pabellón" },
+    { re: /traslad|\bUTI\b|\bUCI\b|unidad cr[íi]tica|deriva(r|da|mos)?\b/i,
+      accion: "etapa", txt: "Cambiar de unidad o servicio" },
+    { re: /\balta\b|se va de alta|domicilio/i, accion: "etapa", txt: "Registrar el alta" },
+    { re: /inercia|hemorragia|\bHPP\b|sangrado (abundante|profuso)|hipotens|shock|choque/i,
+      accion: "calc", id: "choque", txt: "Calcular índice de choque" },
+    { re: /preeclamps|eclamps|hipertens|crisis hipertensiva|\bPA\b \d/i,
+      accion: "calc", id: "preeclampsia", txt: "Evaluar preeclampsia" },
+    { re: /fiebre|febril|corioamnion|temperatura \d/i, accion: "calc", id: "triplei", txt: "Evaluar Triple I" },
+    { re: /tacto|bishop|dilataci[óo]n|borramiento|cuello/i, accion: "calc", id: "bishop", txt: "Calcular Bishop" },
+    { re: /monitoreo|\bMEFI\b|desaceleraci|variabilidad|\bFCF\b|registro basal/i,
+      accion: "calc", id: "mefi", txt: "Clasificar MEFI" },
+    { re: /[óo]bito|mortinato|muerte (fetal|neonatal)|aborto|p[ée]rdida gestacional|ect[óo]pico/i,
+      accion: "dominga", txt: "Abrir seguimiento Ley Dominga" },
+    { re: /demanda|reclam|fiscal[íi]a|carabiner|m[ée]dico-?legal|constancia|denuncia/i,
+      accion: "medlegal", txt: "Abrir registro médico-legal" }
+  ];
+  function gatillos(texto) {
+    var t = String(texto || ""), out = [], vistos = {};
+    if (t.length < 4) return out;
+    GATILLOS.forEach(function (g) {
+      if (!g.re.test(t)) return;
+      var clave = g.accion + "|" + (g.id || "");
+      if (vistos[clave]) return;
+      vistos[clave] = 1;
+      out.push({ accion: g.accion, id: g.id || "", txt: g.txt });
+    });
+    return out.slice(0, 3);
   }
   function cronologia(p) {
     return (p.eventos || []).slice().sort(function (a, b) { return String(a.hora).localeCompare(String(b.hora)); });
@@ -2729,7 +2802,52 @@
     else if (o.paridad === "Nulípara") p.push("Nulípara");
     if (o.cca) p.push(o.cca + "CCA");
     if (o.egSem) p.push("Emb " + o.egSem + (o.egDias ? "+" + o.egDias : "") + " sem");
+    else {
+      // Sin EG tecleada, la FUR la suple y se declara como tal
+      var r = lecturaFUR(o.fur, o.furRef);
+      if (r && r.eg) p.push("Emb " + r.eg + " sem por FUR");
+    }
+    if (o.fur) p.push("FUR " + dmyISO(o.fur));
     return p.join(", ");
+  }
+
+  /* ---------- FUR: fecha de última regla -----------------------------------
+     Dato central del ingreso. De él salen la edad gestacional en la embarazada
+     y el día del ciclo en la ginecológica. Vive en p.obst, o sea a nivel de
+     PACIENTE, no de etapa: se hereda sola por todo el recorrido.
+     Se calcula contra la FECHA DEL TURNO, no contra "hoy": un turno revisado
+     al día siguiente no debe mover la EG.                                     */
+  function diasDesdeFUR(fur, fechaRef) {
+    if (!fur) return null;
+    var a = new Date(fur + "T00:00:00");
+    if (isNaN(a.getTime())) return null;
+    var b = fechaRef ? new Date(fechaRef + "T00:00:00") : new Date();
+    if (isNaN(b.getTime())) b = new Date();
+    var d = Math.floor((b - a) / 86400000);
+    return d;
+  }
+  // Devuelve { dias, sem, resto, texto, nivel } o null
+  function lecturaFUR(fur, fechaRef) {
+    var d = diasDesdeFUR(fur, fechaRef);
+    if (d == null) return null;
+    if (d < 0) return { dias: d, texto: "La FUR es posterior a la fecha del turno: revisa el dato.", nivel: "ambar" };
+    if (d < 35) return { dias: d, texto: "Día " + d + " del ciclo.", nivel: "gris" };
+    var sem = Math.floor(d / 7), resto = d % 7;
+    var eg = sem + (resto ? "+" + resto : "");
+    if (d > 301) return { dias: d, sem: sem, resto: resto,
+      texto: d + " días de amenorrea (" + eg + " sem): fuera de rango para una EG vigente, confirma la FUR.", nivel: "ambar" };
+    var lect = sem < 22 ? "no viable" : sem < 37 ? "pretérmino" : sem < 42 ? "término" : "post-término";
+    return { dias: d, sem: sem, resto: resto, eg: eg,
+      texto: "EG por FUR " + eg + " semanas (" + lect + ") · " + d + " días de amenorrea.",
+      nivel: sem >= 42 ? "ambar" : "verde" };
+  }
+  // EG operativa: la tecleada manda (suele venir de ecografía); la FUR solo la suple.
+  function egOperativa(o, fechaRef) {
+    o = o || {};
+    if (o.egSem) return { sem: parseInt(o.egSem, 10), dias: parseInt(o.egDias || 0, 10), fuente: "registrada" };
+    var r = lecturaFUR(o.fur, fechaRef);
+    if (r && r.sem != null && r.dias >= 0 && r.dias <= 301) return { sem: r.sem, dias: r.resto, fuente: "FUR" };
+    return null;
   }
 
   function lecturaCCA(n) {
@@ -2842,7 +2960,11 @@
       var fin = tipoActual(p), id = p.ident || {};
       var her = esHeredada(p), herTxt = her ? textoHeredada(p, (t5.meta || {}).fecha) : "";
       var herCorto = her ? textoHeredadaCorto(p, (t5.meta || {}).fecha) : "";
-      var enc = fmtObst(p.obst);
+      // La EG derivada de la FUR se ancla a la fecha del turno: un documento
+      // regenerado mañana no debe mostrar una semana más.
+      var obstRef = JSON.parse(JSON.stringify(p.obst || {}));
+      obstRef.furRef = (t5.meta || {}).fecha || "";
+      var enc = fmtObst(obstRef);
       function conEnc(dx) { return [enc, dx].filter(Boolean).join(", "); }
       var evol = cronologia(p).filter(function (e) { return e.tipo !== "Traslado"; })
                    .map(function (e) { return (e.hora ? e.hora + " " : "") + e.texto; }).join(" · ");
@@ -2998,6 +3120,8 @@
     etapaActual: etapaActual, tipoActual: tipoActual, estaCerrada: estaCerrada,
     tuvoEtapa: tuvoEtapa, ultimaEtapaDe: ultimaEtapaDe,
     agregarEtapa: agregarEtapa, agregarEvento: agregarEvento, cronologia: cronologia, diagnosticoVigente: diagnosticoVigente,
+    gatillos: gatillos, eventoDiferido: eventoDiferido, hhmmAhora: hhmmAhora,
+    lecturaFUR: lecturaFUR, diasDesdeFUR: diasDesdeFUR, egOperativa: egOperativa,
     esV4: esV4, adaptarV4: adaptarV4,
     derivarSecciones: derivarSecciones, esDeOtroServicio: esDeOtroServicio,
     esHeredada: esHeredada, horasHospitalizada: horasHospitalizada, textoHeredada: textoHeredada, textoHeredadaCorto: textoHeredadaCorto, dmyISO: dmyISO,
@@ -3280,6 +3404,9 @@
       '<option value=""></option>' + cat("paridad").map(function (x) { return '<option' + (o.paridad === x ? " selected" : "") + '>' + esc(x) + '</option>'; }).join("") + '</select></div>' +
       (esMulti ? '<div class="short"><label class="f">N° partos</label><input type="text" inputmode="numeric" data-ob="paridadN" value="' + at(o.paridadN) + '"></div>' : '<div class="short"></div>') +
       '</div>' +
+      '<div class="fld" style="margin-top:8px"><label class="f">FUR · fecha de última regla</label>' +
+      '<input type="date" data-ob="fur" value="' + at(o.fur) + '"></div>' +
+      '<div id="obFUR" style="margin-top:-4px"></div>' +
       '<div class="row" style="margin-top:8px">' +
       '<div class="short"><label class="f">EG semanas</label><input type="text" inputmode="numeric" data-ob="egSem" value="' + at(o.egSem) + '" placeholder="40"></div>' +
       '<div class="short"><label class="f">+ días</label><input type="text" inputmode="numeric" data-ob="egDias" value="' + at(o.egDias) + '" placeholder="3"></div>' +
@@ -3291,6 +3418,7 @@
       '</div>');
     // --- Procedencia: nueva de este turno o heredada (ya hospitalizada al recibir el turno)
     pintarProcedencia(p);
+    pintarFUR(p);
     $$("#pacIdent [data-ob]").forEach(function (el) {
       el.addEventListener("change", function () {
         p.obst = p.obst || {};
@@ -3298,6 +3426,7 @@
         guardarPronto();
         if (el.getAttribute("data-ob") === "paridad") abrirPaciente(state.pacIdx);
         else {
+          pintarFUR(p);
           $("#obPrev").textContent = V5.fmtObst(p.obst);
           var oc = $("#obCCA");
           if (oc) { oc.textContent = V5.lecturaCCA(p.obst.cca);
@@ -3326,6 +3455,26 @@
     pintarEtapa(p);
     pintarTL(p);
     ver("#scrPac");
+  }
+  /* La FUR se lee contra la fecha del turno, no contra hoy. La EG tecleada
+     manda siempre: suele venir de ecografía, que es mejor dato que la FUR.
+     Si no hay EG, se ofrece la de la FUR en un botón; nunca se sobrescribe. */
+  function pintarFUR(p) {
+    var host = $("#obFUR"); if (!host) return;
+    var o = (p && p.obst) || {};
+    var r = V5.lecturaFUR(o.fur, state.turno.meta.fecha);
+    if (!r) { host.innerHTML = ""; return; }
+    var col = { verde: "#1e8e5a", ambar: "#b8860b", gris: "var(--gris)" }[r.nivel] || "var(--gris)";
+    var ofrecer = r.eg && !o.egSem;
+    host.innerHTML = '<div style="font-size:11.5px;line-height:1.4;color:' + col + '">' + esc(r.texto) +
+      (o.egSem && r.eg && (parseInt(o.egSem, 10) !== r.sem)
+        ? ' <span style="color:#b8860b">· la EG registrada (' + esc(o.egSem) + ' sem) difiere de la FUR</span>' : "") +
+      '</div>' +
+      (ofrecer ? '<button class="btn sm ghost" id="furUsar" style="margin-top:6px">Usar ' + esc(r.eg) + ' como EG</button>' : "");
+    if ($("#furUsar")) $("#furUsar").addEventListener("click", function () {
+      p.obst = p.obst || {}; p.obst.egSem = String(r.sem); p.obst.egDias = r.resto ? String(r.resto) : "";
+      guardarPronto(); abrirPaciente(state.pacIdx);
+    });
   }
   function pintarEtapa(p) {
     var e = V5.etapaActual(p), host = $("#pacEtapa");
@@ -3450,8 +3599,11 @@
     var l = V5.cronologia(p), host = $("#pacTL");
     if (!l.length) { host.innerHTML = '<div class="empty">Sin eventos registrados.</div>'; return; }
     host.innerHTML = l.map(function (e) {
+      var dif = V5.eventoDiferido(e) ? ' <span class="dif">· registrado ' + esc(e.escritoEn) + '</span>' : "";
+      var tp = e.tipo ? ' <span class="tp">' + esc(e.tipo) + '</span>' : "";
       return '<div class="ev' + (e.tipo === "Traslado" ? " tras" : "") + '">' +
-        '<span class="hh">' + esc(e.hora || "--:--") + '</span> <span class="tp">' + esc(e.tipo) + '</span><br>' + esc(e.texto) + '</div>';
+        '<span class="hh">' + esc(e.hora || "--:--") + '</span>' + tp + dif +
+        '<br>' + esc(e.texto) + '</div>';
     }).join("");
   }
   function leerPaciente() {
@@ -4094,7 +4246,12 @@
     var etapas = (p.etapas || []).map(function (e) { return V5.ETAPAS[e.tipo] || e.tipo; }).join(" → ");
     var ult = V5.etapaActual(p) || { datos: {} }, d = ult.datos || {};
     // la cronología de la paciente se hereda completa
-    var cron = V5.cronologia(p).map(function (e) { return { hora: e.hora, evento: (e.tipo !== "Traslado" ? e.tipo + ": " : "") + e.texto }; });
+    // La hora de tecleo solo se muestra aquí: es donde una entrada diferida se cuestiona.
+    var cron = V5.cronologia(p).map(function (e) {
+      return { hora: e.hora,
+               evento: (e.tipo && e.tipo !== "Traslado" ? e.tipo + ": " : "") + e.texto +
+                       (V5.eventoDiferido(e) ? " [registrado a las " + e.escritoEn + "]" : "") };
+    });
     var proc = d.procedimientos ? V5.txtProcParto(d.procedimientos) : "";
     var c = { id: Date.now(),
       fecha: state.turno.meta.fecha || hoyISO(),
@@ -4116,16 +4273,86 @@
     abrirML(state.medlegal.length - 1);
     setTimeout(function () { aviso("Caso creado", "Se heredaron <b>" + cron.length + " evento(s)</b> de cronología.<br>Completa consentimiento, antecedentes y desenlace."); }, 150);
   });
-  $("#btnEvento").addEventListener("click", function () {
-    var p = state.turno.pacientes[state.pacIdx];
-    var cuerpo = '<div class="row"><div class="short"><label class="f">Hora</label><input type="time" id="evH" value="' + ahoraHHMM() + '"></div>' +
-      '<div><label class="f">Tipo</label><select id="evT">' + cat("tiposEvento").map(function (o) { return '<option>' + esc(o) + '</option>'; }).join("") + '</select></div></div>' +
-      '<div class="fld" style="margin-top:10px"><label class="f">Detalle</label><textarea id="evX" placeholder="Ej.: TV 6 cm, RAM LO claro"></textarea></div>';
-    hoja("Nuevo evento", cuerpo, function () {
-      V5.agregarEvento(p, $("#evH").value, $("#evT").value, $("#evX").value.trim());
-      guardarPronto(); cerrarHoja(); pintarTL(p); pintarMain();
+  /* ---------- NUEVA EVOLUCIÓN ------------------------------------------------
+     El relato es el registro primario; los botones de acción son el ancla
+     estructurada DENTRO del relato, en el mismo gesto. La hora es la DEL HECHO
+     (se escribe después, no durante); la de tecleo se guarda sola.             */
+  $("#btnEvento").addEventListener("click", function () { nuevaEvolucion(); });
+
+  function nuevaEvolucion() {
+    var p = state.turno.pacientes[state.pacIdx]; if (!p) return;
+    leerPaciente();
+    var cuerpo =
+      '<div class="row"><div class="short"><label class="f">Hora del hecho</label>' +
+        '<input type="time" id="evH" value="' + ahoraHHMM() + '"></div>' +
+      // "Evolución" se filtra aquí además del catálogo: ya estamos dentro de una.
+      // En blanco = relato llano; el tipo solo sub-clasifica cuando hace falta.
+      // «Evolución» no se ofrece: ya estamos dentro de una. El vacío ES la
+      // evolución simple; el resto son etiquetas para cuando además es otra cosa.
+      '<div><label class="f">Tipo</label><select id="evT"><option value="">— solo evolución —</option>' +
+        cat("tiposEvento").filter(function (o) { return !/^evoluci/i.test(o); })
+          .map(function (o) { return '<option>' + esc(o) + '</option>'; }).join("") +
+        '</select></div></div>' +
+      '<div class="hint" style="margin:6px 0 0">Si lo escribes después del hecho, corrige la hora: queda registrado cuándo ocurrió y cuándo lo escribiste.</div>' +
+      '<div class="fld" style="margin-top:10px"><label class="f">Evolución</label>' +
+        '<textarea id="evX" rows="5" placeholder="Paciente evoluciona… se indica… Puedes dictar con el micrófono del teclado."></textarea></div>' +
+      '<div id="evGat"></div>' +
+      '<div class="acc"><div class="t">Registrar además</div>' +
+        '<button class="btn sm ghost" data-acc="etapa">Cambiar de etapa o servicio</button>' +
+        '<button class="btn sm ghost" data-acc="calc">Calculadora</button>' +
+        '<button class="btn sm ghost" data-acc="medlegal">Médico-legal</button>' +
+        '<button class="btn sm ghost" data-acc="dominga">Ley Dominga</button>' +
+        '<div class="hint" style="margin:5px 0 0">Guarda la evolución y sigue con la acción.</div></div>';
+    hoja("Nueva evolución", cuerpo, function () {
+      if (!guardarEvolucion(p)) { aviso("Nueva evolución", "Escribe la evolución antes de guardar."); return; }
+      cerrarHoja();
     });
-  });
+    var ta = $("#evX");
+    ta.addEventListener("input", function () { pintarGatillos(p, ta.value); });
+    $$("#sheetBody [data-acc]").forEach(function (b) {
+      b.addEventListener("click", function () { correrAccion(p, b.getAttribute("data-acc"), ""); });
+    });
+    setTimeout(function () { ta.focus(); }, 120);
+  }
+
+  // Lo que detecta se OFRECE, nunca se registra solo.
+  function pintarGatillos(p, texto) {
+    var host = $("#evGat"); if (!host) return;
+    var gs = V5.gatillos(texto).filter(function (g) {
+      if (g.accion !== "parto") return true;
+      return V5.destinosValidos(V5.tipoActual(p)).indexOf("PARTO") >= 0;
+    });
+    if (!gs.length) { host.innerHTML = ""; return; }
+    host.innerHTML = '<div class="gat"><div class="t">Por lo que escribiste, esto no quedaría contado en el turno si no lo registras:</div>' +
+      gs.map(function (g, i) { return '<button class="btn sm" data-gat="' + i + '">' + esc(g.txt) + '</button>'; }).join("") +
+      '</div>';
+    $$("#evGat [data-gat]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var g = gs[Number(b.getAttribute("data-gat"))];
+        correrAccion(p, g.accion, g.id);
+      });
+    });
+  }
+
+  function guardarEvolucion(p) {
+    var txt = ($("#evX") ? $("#evX").value.trim() : "");
+    if (!txt) return false;
+    V5.agregarEvento(p, $("#evH").value, $("#evT").value, txt, V5.hhmmAhora());
+    guardarPronto(); pintarTL(p); pintarMain();
+    return true;
+  }
+
+  // Guarda primero, actúa después: el relato nunca se pierde por tocar un botón.
+  function correrAccion(p, accion, id) {
+    guardarEvolucion(p);
+    cerrarHoja();
+    setTimeout(function () {
+      if (accion === "etapa" || accion === "parto") elegirEtapa(false);
+      else if (accion === "calc") { if (id) usarEscala(id); else abrirCalculadora(""); }
+      else if (accion === "medlegal") $("#btnPacMedLegal").click();
+      else if (accion === "dominga") $("#btnPacDominga").click();
+    }, 180);
+  }
   $("#btnGuardarPac").addEventListener("click", function () { leerPaciente(); pintarMain(); ver("#scrMain"); });
   $("#btnPacBack").addEventListener("click", function () { leerPaciente(); pintarMain(); ver("#scrMain"); });
   function borrarPacienteActual() {
@@ -4797,13 +5024,22 @@
   }
   function precargaEscala(id, p) {
     var def = V5.ESCALAS[id] || {};
-    if (!p || !def.render) return {};
+    if (!p) return {};
+    // La EG operativa (tecleada, o derivada de la FUR) alimenta toda escala que la pida
+    var ego = V5.egOperativa(p.obst, state.turno.meta.fecha);
+    if (!def.render) {
+      var w = {};
+      if (ego && (def.numericos || []).some(function (n) { return n.k === "egSem"; })) {
+        var dd = (V5.etapaActual(p) || {}).datos || {};
+        var prev = dd[id] || {};
+        w = JSON.parse(JSON.stringify(prev));
+        if (!w.egSem) w.egSem = String(ego.sem);
+      }
+      return w;
+    }
     var d = (V5.etapaActual(p) || {}).datos || {};
     var v = JSON.parse(JSON.stringify((def.render === "bishop" ? d.bishop : d.mefi) || {}));
-    if (def.render === "bishop" && !v.contexto) {
-      var eg = parseFloat((p.obst || {}).egSem);
-      if (!isNaN(eg)) v.contexto = eg >= 37 ? "Término" : "Pretérmino";
-    }
+    if (def.render === "bishop" && !v.contexto && ego) v.contexto = ego.sem >= 37 ? "Término" : "Pretérmino";
     return v;
   }
   function usarEscala(id) {
