@@ -51,6 +51,7 @@
   .pac .row2{display:flex; gap:7px; margin-top:9px; flex-wrap:wrap}
   .chip{font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; background:#eaf1fb; color:var(--azul)}
   .chip.alta{background:#e8f6ee; color:var(--verde)}
+  .chip.her{background:#fdf2e0; color:#8a5a0b}
 
   .btn{border:1px solid var(--linea); background:var(--blanco); color:var(--tinta);
     border-radius:11px; padding:11px 13px; font-size:14px; font-weight:600; flex:1}
@@ -81,8 +82,11 @@
   textarea{min-height:64px; resize:vertical; line-height:1.35}
   /* botón flotante de calculadoras */
   #fabCalc{position:fixed; right:14px; bottom:calc(env(safe-area-inset-bottom) + 96px); z-index:35;
-    width:54px; height:54px; border-radius:50%; border:0; background:var(--azul); color:#fff;
-    font-size:23px; font-weight:700; box-shadow:0 4px 14px rgba(26,77,143,.38)}
+    width:56px; height:56px; border-radius:50%; border:0;
+    background:linear-gradient(180deg,#F59E2C,#E07A16); color:#fff;
+    font-size:24px; font-weight:800; letter-spacing:-.5px;
+    box-shadow:0 4px 16px rgba(224,122,22,.45), 0 0 0 3px rgba(255,255,255,.9)}
+  #fabCalc:active{transform:scale(.94)}
   .catTag{display:inline-block; font-size:10px; font-weight:700; letter-spacing:.3px; text-transform:uppercase;
     color:var(--azul); background:#eaf1fb; border-radius:999px; padding:2px 8px; margin-bottom:5px}
 
@@ -104,6 +108,14 @@
   .lista .gr{font-size:10.5px; font-weight:700; color:var(--azul); letter-spacing:.4px;
     text-transform:uppercase; margin:8px 0 3px}
   .hint{font-size:12px; color:var(--gris); line-height:1.45; margin:0 0 10px}
+  /* Momentos clínicos de la etapa: ingreso · evolución · desenlace */
+  .paso{font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+        color:var(--azul); margin:16px 0 8px; padding-bottom:5px; border-bottom:1px solid var(--linea)}
+  .paso:first-child{margin-top:4px}
+  details.sugcalc{margin-top:14px; border-style:dashed}
+  details.sugcalc > summary{color:var(--gris)}
+  details.sugcalc .btn{margin:0 5px 5px 0}
+  details.sugcalc .hint{margin:5px 0 0}
   .empty{color:var(--gris); font-size:13px; text-align:center; padding:14px 0}
 
   /* línea de tiempo */
@@ -139,7 +151,7 @@
     <button id="btnFirma">Firma</button>
     <button id="btnHist">Historial</button>
   </div>
-  <div class="ver">v5.0</div>
+  <div class="ver">v5.7</div>
 </header>
 
 <!-- ===== PRINCIPAL ===== -->
@@ -805,26 +817,37 @@
     var nac = t.nacimientos || [];
     function cnt(pfx){ return nac.filter(function(n){return (n.tipoParto||"").toLowerCase().indexOf(pfx)===0;}).length; }
     var vag=cnt("vag"), ces=cnt("ces"), forc=cnt("f");
-    var interv=(t.intervenciones||[]).length;
-    var ing=(t.ingresos||[]), pre=(t.partoIntegral||[]), obs=(t.observacion||[]), otras=(t.otrasUnidades||[]);
+    // La rama define el recuento: la cesárea ya se cuenta como nacimiento, no es
+    // una intervención ginecológica. La plantilla oficial cuenta solo las ginecológicas.
+    var pabTodas=(t.intervenciones||[]);
+    var intervGin=pabTodas.filter(function(x){ return !/^obst/i.test(x.rama||""); });
+    var intervObstComp=pabTodas.filter(function(x){ return /^obst/i.test(x.rama||"") && !/ces[áa]rea/i.test(x.rama||""); });
+    var interv=intervGin.length;
+    var ingAll=(t.ingresos||[]), pre=(t.partoIntegral||[]), obs=(t.observacion||[]), otras=(t.otrasUnidades||[]);
+    // La paciente HEREDADA ya estaba hospitalizada: se entrega, pero su ingreso no es de este turno.
+    var her=ingAll.filter(function(x){return x.heredada;});
+    var ing=ingAll.filter(function(x){return !x.heredada;});
     var consultas=(t.urgencia&&t.urgencia.consultas!==""&&t.urgencia.consultas!=null)?t.urgencia.consultas:0;
     var staff=(meta.staff&&meta.staff.length?meta.staff.join(" / "):"");
-    var kpis={consultas:consultas, nac:nac.length, vag:vag, ces:ces, forc:forc, interv:interv, ing:ing.length, pre:pre.length, obs:obs.length, otras:otras.length};
+    var kpis={consultas:consultas, nac:nac.length, vag:vag, ces:ces, forc:forc, interv:interv, ing:ing.length, her:her.length, pre:pre.length, obs:obs.length, otras:otras.length};
     function np(n,s,p){ return n+" "+(Number(n)===1?s:p); }
     var act = actividadDirectaIndirecta(t);
     var parrafos = [];
 
     // El INGRESO es la paciente hospitalizada (punto de inflexión), no un acto suelto.
-    var desdeObs = ing.filter(function (x) { return x.procedencia === "Desde observación"; }).length;
+    var desdeObs = ing.filter(function (x) { return /observaci|sogo/i.test(x.procedencia || ""); }).length;
     var nPac = t.totalPacientes;
 
     var f1 = "Durante el turno de 24 horas del " + (meta.fecha || "") + ", el equipo de turno" +
       (staff ? " (" + staff + ")" : "") + " gestionó una carga asistencial de " + np(consultas, "atención", "atenciones") +
       " en el box de Urgencia";
     f1 += (nPac ? ", y tomó a su cargo " + np(nPac, "paciente", "pacientes") + " dentro del Servicio. " : ". ");
-    f1 += "Se atendieron " + np(nac.length, "nacimiento", "nacimientos") +
+    f1 += "Se " + (Number(nac.length) === 1 ? "atendió " : "atendieron ") + np(nac.length, "nacimiento", "nacimientos") +
       (nac.length ? " (" + vag + " " + (vag === 1 ? "vaginal" : "vaginales") + ", " + ces + " " + (ces === 1 ? "cesárea" : "cesáreas") + ", " + forc + " fórceps)" : "") +
-      " y se realizaron " + np(interv, "intervención ginecológica", "intervenciones ginecológicas") + ". ";
+      (Number(interv) === 0 ? ", sin intervenciones ginecológicas"
+        : Number(interv) === 1 ? " y se realizó 1 intervención ginecológica"
+        : " y se realizaron " + interv + " intervenciones ginecológicas") +
+      (intervObstComp.length ? ", además de " + np(intervObstComp.length, "intervención obstétrica en pabellón", "intervenciones obstétricas en pabellón") : "") + ". ";
     if (!ing.length) f1 += "Ninguna paciente requirió hospitalización.";
     else {
       f1 += "Se " + (ing.length === 1 ? "hospitalizó a 1 paciente" : "hospitalizó a " + ing.length + " pacientes");
@@ -833,6 +856,24 @@
       f1 += ".";
     }
     parrafos.push(f1);
+
+    // Las heredadas se reciben hospitalizadas y con manejo en curso: pesan sobre el turno
+    // aunque su ingreso no le pertenezca.
+    if (her.length) {
+      var hMax = 0, hCon = 0;
+      // la permanencia solo se afirma de las que siguen hospitalizadas al momento de la entrega
+      [].concat(her.filter(function(x){return x.ubicacionActual!=="Alta";}),
+                pre.filter(function(x){return x.heredada;}),
+                obs.filter(function(x){return x.heredada;}),
+                otras.filter(function(x){return x.heredada;})).forEach(function (x) {
+        var m = /\((\d+)\s*h\)/.exec(x.heredadaTxt || "");
+        if (m) { hCon++; hMax = Math.max(hMax, Number(m[1])); }
+      });
+      parrafos.push("Se " + (her.length === 1 ? "recibió 1 paciente" : "recibieron " + her.length + " pacientes") +
+        " del turno anterior, ya hospitalizada" + (her.length === 1 ? "" : "s") + " y con manejo establecido" +
+        (hCon ? ", con una permanencia de hasta " + hMax + " horas al momento de la entrega" : "") +
+        ". Su evolución y el manejo vigente se consignan en la tabla de pendientes.");
+    }
 
     var activos = pre.length + obs.length + otras.length;
     parrafos.push(activos
@@ -871,7 +912,7 @@
     if (interv) parrafos.push("La actividad quirúrgica ginecológica alcanzó " + np(interv, "procedimiento", "procedimientos") + ".");
 
     parrafos.push(activos
-      ? "Se traspasan " + np(activos, "paciente pendiente", "pacientes pendientes") + " al turno entrante."
+      ? "Se " + (Number(activos) === 1 ? "traspasa " : "traspasan ") + np(activos, "paciente pendiente", "pacientes pendientes") + " al turno entrante."
       : "No se traspasan pacientes pendientes al turno entrante.");
 
     var resumen = parrafos[0];
@@ -937,18 +978,35 @@
         agregarNovedad(clave, "Queda en " + (x.unidad || x.ubicacionActual || "hospitalización") + (x.cama ? ", cama " + x.cama : "") + "." +
           (x.manejo ? " " + x.manejo : "") + (x.condicion ? " " + x.condicion : ""));
       } else {
-        var enc = "Ingreso" + (x.unidad ? " " + x.unidad : "") + " — " + fmtIdent(x.ident) + (x.cama ? ", cama " + x.cama : "") +
-          (x.procedencia === "Desde observación" ? " (tras observación)" : "") + ": " + (x.diagnosticos || "");
-        agregarNovedad(clave, enc + (ev ? ". " + ev : "") + (x.condicion ? " — " + x.condicion : "") + (x.manejo ? " — " + x.manejo : ""));
+        var enc = "Ingreso" + (x.unidad ? " a " + x.unidad : "") + " — " + fmtIdent(x.ident) + (x.cama ? ", cama " + x.cama : "") +
+          (/observaci|sogo/i.test(x.procedencia || "") ? " (tras observación)" : "") + ": " + (x.diagnosticos || "");
+        // Si la paciente sigue en unidad, su detalle va en la tabla de pendientes: aquí solo el hecho del ingreso.
+        agregarNovedad(clave, x.sigueEnUnidad
+          ? enc + ". Continúa en el Servicio; detalle en pendientes."
+          : enc + (ev ? ". " + ev : "") + (x.condicion ? " — " + x.condicion : "") + (x.manejo ? " — " + x.manejo : ""));
       }
+    });
+    // La heredada que se va de alta en nuestro turno sí es un hecho del turno.
+    her.forEach(function(x){
+      if (x.ubicacionActual !== "Alta") return;
+      agregarNovedad(clavePac(x.ident), "Alta de paciente recibida del turno anterior — " + fmtIdent(x.ident) +
+        (x.diagnosticos ? ": " + x.diagnosticos : "") + (x.condicion ? " — " + x.condicion : "") + ".");
     });
     (t.peritajes||[]).forEach(function(x){ var e=[]; if(x.autorizada)e.push("autorizada"); if(x.realizada)e.push("realizada");
       novedades.push("Peritaje médico-legal — "+(x.nombre||"")+(x.dau?" (DAU "+x.dau+")":"")+(e.length?" — "+e.join(", "):"")+"."); });
 
     var pend=[];
-    pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:[fmtBishopCompacto(x),fmtMefiCompacto(x),(x.gibbsTxt||""),x.condicion||""].filter(Boolean).join("\n"), manejo:[x.manejo||"",(x.evolucion?"Evol.: "+x.evolucion:"")].filter(Boolean).join("\n")}); });
-    obs.forEach(function(x){ pend.push({ubic:"Observación"+(x.n?" "+x.n:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
-    otras.forEach(function(x){ pend.push({ubic:(x.servicio?x.servicio+" ":"")+(x.cama||"Otra unidad"), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:""}); });
+    pre.forEach(function(x){ pend.push({ubic:"Preparto"+(x.sala?" S"+x.sala:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:[fmtBishopCompacto(x),fmtMefiCompacto(x),(x.gibbsTxt||""),x.condicion||""].filter(Boolean).join("\n"), manejo:[x.heredadaCorto||x.heredadaTxt||"",x.manejo||"",(x.evolucion?"Evol.: "+x.evolucion:"")].filter(Boolean).join("\n")}); });
+    obs.forEach(function(x){ pend.push({ubic:"Observación"+(x.n?" "+x.n:""), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:x.heredadaCorto||x.heredadaTxt||""}); });
+    otras.forEach(function(x){ pend.push({ubic:(x.servicio?x.servicio+" ":"")+(x.cama||"Otra unidad"), ident:fmtIdent(x.ident), dx:x.diagnosticos||"", cond:x.condicion||"", manejo:x.heredadaCorto||x.heredadaTxt||""}); });
+    // Heredada que sigue hospitalizada en Sala/Pabellón: no es novedad, es entrega.
+    her.forEach(function(x){
+      if (!x.continuaHosp) return;
+      pend.push({ubic:[x.unidad||"Hospitalización", x.cama?"cama "+x.cama:""].filter(Boolean).join(" "),
+        ident:fmtIdent(x.ident), dx:x.diagnosticos||"",
+        cond:[fmtEvalIngreso(x), x.condicion||""].filter(Boolean).join("\n"),
+        manejo:[x.heredadaCorto||x.heredadaTxt||"", x.manejo||"", x.comentarios||""].filter(Boolean).join("\n")});
+    });
     return { fecha:meta.fecha||"", staff:staff,
       saliente: meta.nombreSaliente || staff, rutSaliente: meta.rutSaliente||"",
       entrante: meta.entrante||"", rutEntrante: meta.rutEntrante||"",
@@ -1341,7 +1399,8 @@
     var nac = t.nacimientos || [];
     function cnt(pfx) { return nac.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf(pfx) === 0; }).length; }
     var vag = cnt("vag"), ces = cnt("ces"), forc = cnt("f");
-    var interv = (t.intervenciones || []).length;
+    // Mismo criterio que el informe: la cesárea ya se cuenta como nacimiento
+    var interv = (t.intervenciones || []).filter(function (x) { return !/^obst/i.test(x.rama || ""); }).length;
     var consultas = (t.urgencia && t.urgencia.consultas !== "" && t.urgencia.consultas != null) ? Number(t.urgencia.consultas) : "";
     headerRow(["Nacimientos", "Vaginales", "Cesáreas", "Fórceps", "Interv. gineco", "Consultas box"]);
     push([cell(nac.length, 7, true), cell(vag, 7, true), cell(ces, 7, true), cell(forc, 7, true),
@@ -1359,23 +1418,24 @@
 
     section("I. Salas de Parto Integral (Preparto)",
       ["N° Sala", "Identificación del paciente", "Diagnóstico principal", "TV / Bishop", "MEFI", "Manejo", "Evolución", "Condición actual"],
-      t.partoIntegral, function (x) { return [x.sala || "", fmtIdent(x.ident), x.diagnosticos || "", DC.fmtBishop(x), DC.fmtMefi(x), x.manejo || "", x.evolucion || "", x.condicion || ""]; }, true);
+      t.partoIntegral, function (x) { return [x.sala || "", fmtIdent(x.ident), x.diagnosticos || "", DC.fmtBishop(x), DC.fmtMefi(x), x.manejo || "", [x.heredadaTxt || "", x.evolucion || ""].filter(Boolean).join(" · "), x.condicion || ""]; }, true);
 
     section("II. Salas de Observación",
       ["N°", "Identificación del paciente", "Diagnóstico principal", "Condición actual"],
-      t.observacion, function (x) { return [x.n || "", fmtIdent(x.ident), x.diagnosticos || "", x.condicion || ""]; }, true);
+      t.observacion, function (x) { return [x.n || "", fmtIdent(x.ident), x.diagnosticos || "", [x.heredadaTxt || "", x.condicion || ""].filter(Boolean).join(" · ")]; }, true);
 
     section("III. Pacientes en Obstetricia-Ginecología y/u otras unidades",
       ["N° Cama", "Servicio", "Identificación del paciente", "Diagnóstico principal", "Condición actual"],
-      t.otrasUnidades, function (x) { return [x.cama || "", x.servicio || "", fmtIdent(x.ident), x.diagnosticos || "", x.condicion || ""]; }, true);
+      t.otrasUnidades, function (x) { return [x.cama || "", x.servicio || "", fmtIdent(x.ident), x.diagnosticos || "", [x.heredadaTxt || "", x.condicion || ""].filter(Boolean).join(" · ")]; }, true);
 
-    section("IV. Intervenciones Ginecológicas (operadas)",
+    section("IV. Intervenciones en Pabellón (operadas)",
       ["Identificación del paciente", "Tipo", "Diagnóstico preoperatorio", "Procedimiento", "Hallazgos · incidencias · Dx postoperatorio"],
       t.intervenciones, function (x) { return [fmtIdent(x.ident), x.rama || "", x.diagnostico || "", x.intervencion || "", x.comentarios || ""]; }, true);
 
-    section("V. Ingresos a Hospitalización",
+    section("V. Ingresos a Hospitalización" +
+      ((t.ingresos || []).some(function (x) { return x.heredada; }) ? " y pacientes recibidas del turno anterior" : ""),
       ["Hora ingreso", "Procedencia", "Identificación del paciente", "Diagnóstico al ingreso", "Ubicación actual", "Evaluación", "Manejo propuesto", "Condición actual"],
-      t.ingresos, function (x) { return [x.horaIngreso || "", x.procedencia || "", fmtIdent(x.ident), x.diagnosticos || "", [x.unidad, x.cama ? "cama " + x.cama : ""].filter(Boolean).join(" · ") || x.ubicacionActual || "", DC.fmtEvalIngreso(x), x.manejo || "", x.condicion || ""]; }, true);
+      t.ingresos, function (x) { return [x.horaIngreso || "", (x.heredada ? (x.heredadaCorto || x.procedencia || "") : (x.procedencia || "")), fmtIdent(x.ident), x.diagnosticos || "", (x.ubicacionActual === "Alta" ? ("Alta" + ([x.unidad, x.cama ? "cama " + x.cama : ""].filter(Boolean).join(" · ") ? " (desde " + [x.unidad, x.cama ? "cama " + x.cama : ""].filter(Boolean).join(" · ") + ")" : "")) : ([x.unidad, x.cama ? "cama " + x.cama : ""].filter(Boolean).join(" · ") || x.ubicacionActual || "")), DC.fmtEvalIngreso(x), x.manejo || "", x.condicion || ""]; }, true);
 
     section("VI. Nacimientos (partos atendidos)",
       ["Identificación (madre)", "Diagnóstico", "Vía de parto", "Curso / procedimientos", "Resultado", "Comentarios"],
@@ -1469,7 +1529,344 @@
     return DC.zipStore(files);
   }
 
-  var api = { buildXlsx: buildXlsx };
+
+  /* ==========================================================================
+   * PLANILLA OFICIAL DEL SERVICIO — calcada del libro real
+   * (FORMATO_ENTREGA_DE_TURNO_medico.xlsx, 30 pestañas, aportado por el Jefe).
+   * Geometría verificada contra el archivo: columnas A 10,71 · B 27,71 ·
+   * C-E 12,57 (ancho por defecto); 6 secciones con 6/7/11/6/7/6 filas de datos;
+   * "Condición actual" combinada D:E en I, II y III; marco medium y rejilla thin.
+   * ========================================================================*/
+  var ANCHO_DEF = 12.5703125, ANCHO_A = 10.7109375, ANCHO_B = 27.7109375;
+  var FUENTE = "Calibri";
+
+  // fuentes: 0 dato(8) · 1 dato negrita(8) · 2 meta(10 b) · 3 sección(12 b) · 4 título(13 b)
+  var FUENTES_OF = [[8, 0], [8, 1], [10, 1], [12, 1], [13, 1]];
+  // rellenos: 0 ninguno · 2 título D8D8D8 · 3 sección D9D9D9 · 4 cabecera F2F2F2
+  var RELLENOS_OF = [null, null, "FFD8D8D8", "FFD9D9D9", "FFF2F2F2"];
+  // alineaciones
+  var ALIN_OF = [
+    { h: "left", v: "center", w: 1 },      // 0
+    { h: "center", v: "center", w: 1 },    // 1
+    { h: "center", v: "center", w: 0 }     // 2
+  ];
+
+  function estilosOficial() {
+    var fonts = FUENTES_OF.map(function (f) {
+      return '<font>' + (f[1] ? '<b/>' : '') + '<sz val="' + f[0] + '"/><name val="' + FUENTE + '"/><family val="2"/></font>';
+    }).join("");
+    var fills = '<fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+      RELLENOS_OF.slice(2).map(function (c) {
+        return '<fill><patternFill patternType="solid"><fgColor rgb="' + c + '"/><bgColor indexed="64"/></patternFill></fill>';
+      }).join("");
+    // 16 bordes: bit 1=izq 2=der 4=arriba 8=abajo; bit encendido = medium, apagado = thin
+    var bordes = "";
+    for (var i = 0; i < 16; i++) {
+      function g(b) { return (i & b) ? "medium" : "thin"; }
+      bordes += '<border>' +
+        '<left style="' + g(1) + '"><color rgb="FF000000"/></left>' +
+        '<right style="' + g(2) + '"><color rgb="FF000000"/></right>' +
+        '<top style="' + g(4) + '"><color rgb="FF000000"/></top>' +
+        '<bottom style="' + g(8) + '"><color rgb="FF000000"/></bottom><diagonal/></border>';
+    }
+    bordes += '<border><left/><right/><top/><bottom/><diagonal/></border>';   // 16 = sin bordes
+    return { fonts: fonts, fills: fills, bordes: bordes, nBordes: 17 };
+  }
+
+  // Los estilos se acuñan bajo demanda: una combinación fuente/relleno/borde/alineación
+  // por celda, sin tabla gigante escrita a mano.
+  function AcunadorEstilos() {
+    var mapa = {}, lista = [];
+    return {
+      id: function (fuente, relleno, borde, alin) {
+        var k = fuente + "|" + relleno + "|" + borde + "|" + alin;
+        if (mapa[k] == null) {
+          mapa[k] = lista.length;
+          var a = ALIN_OF[alin];
+          lista.push('<xf numFmtId="0" fontId="' + fuente + '" fillId="' + relleno + '" borderId="' + borde +
+            '" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">' +
+            '<alignment horizontal="' + a.h + '" vertical="' + a.v + '"' + (a.w ? ' wrapText="1"' : '') + '/></xf>');
+        }
+        return mapa[k];
+      },
+      xml: function () { return lista; }
+    };
+  }
+
+  var MESES_TAB = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO",
+                   "AGOSTO", "SEPT", "OCT", "NOV", "DIC"];
+  function nombreHoja(iso) {
+    if (!iso || !/^\d{4}-\d\d-\d\d$/.test(iso)) return "ENTREGA DE TURNO";
+    var p = iso.split("-");
+    return p[2] + " " + (MESES_TAB[Number(p[1]) - 1] || "");
+  }
+  function dmy(iso) {
+    if (!iso || !/^\d{4}-\d\d-\d\d$/.test(iso)) return iso || "";
+    var p = iso.split("-"); return p[2] + "/" + p[1] + "/" + p[0];
+  }
+  function compacta(partes) {
+    return partes.filter(function (x) { return x && String(x).trim(); })
+                 .map(function (x) { return String(x).trim().replace(/\s*\n\s*/g, " · "); })
+                 .join(" · ");
+  }
+  function resolucionNoRedundante(x) {
+    var r = DC.resolucionParto(x) || "", via = (x.tipoParto || "").trim();
+    return (r.trim().toLowerCase() === via.toLowerCase()) ? "" : r;
+  }
+
+  /* La grilla se define UNA vez y de ella salen el .xlsx, la vista previa y el
+     portapapeles. Todas las combinaciones son horizontales dentro de una fila. */
+  function grillaOficial(turno) {
+    var t = turno || {}, meta = t.meta || {};
+    var G = [];
+    function fila(tipo, alto, celdas) { G.push({ tipo: tipo, alto: alto, celdas: celdas }); }
+    function c(v, span, al, fz) { return { v: (v == null ? "" : v), span: span || 1, al: al, fz: fz }; }
+
+    fila("titulo", 30.75, [c(" ENTREGA DE TURNO SERVICIO DE OBSTETRICIA Y GINECOLOGIA", 5)]);
+    fila("meta", 27, [c("FECHA:  " + dmy(meta.fecha), 2), c("MEDICOS DE TURNO: " + (meta.staff || []).join("  "), 3)]);
+
+    var nac = t.nacimientos || [];
+    function cnt(pfx) { return nac.filter(function (n) { return (n.tipoParto || "").toLowerCase().indexOf(pfx) === 0; }).length; }
+    var vag = cnt("vag"), ces = cnt("ces"), forc = cnt("f");
+    // Criterio del propio servicio: la cesárea se cuenta como nacimiento, no como
+    // intervención ginecológica, aunque la sección IV la liste.
+    var pab = (t.intervenciones || []);
+    var intervGin = pab.filter(function (x) { return !/^obst/i.test(x.rama || ""); }).length;
+    var consultas = (t.urgencia && t.urgencia.consultas !== "" && t.urgencia.consultas != null) ? t.urgencia.consultas : "";
+
+    fila("meta", 25.5, [c("NÚMERO DE NACIMIENTOS: " + nac.length, 2, 0, 1),
+                        c("Vaginales: " + vag, 1, 0), c("Cesáreas: " + ces, 1, 0), c("Fórceps: " + forc, 1, 0)]);
+    fila("meta", 27, [c("INTERVENCIONES GINECOLÓGICAS: " + intervGin, 2, 0, 1),
+                      c("NÚMERO DE CONSULTAS: " + consultas, 2, 0, 1), c("")]);
+
+    var IDENT = "      IDENTIFICACIÓN DEL PACIENTE (NOMBRE Y APELLIDOS)";
+
+    function seccion4(titulo, altoCab, cabeceras, items, mapFn, filasMin, numera) {
+      fila("seccion", 27, [c(titulo, 5)]);
+      fila("cabecera", altoCab, [c(cabeceras[0]), c(cabeceras[1]), c(cabeceras[2]), c(cabeceras[3], 2)]);
+      var n = Math.max(filasMin, (items || []).length);
+      var libres = [];
+      if (numera) {   // las salas libres llevan los números que nadie ocupa
+        var usadas = {};
+        (items || []).forEach(function (x) { var k = String(mapFn(x)[0] || "").trim(); if (k) usadas[k] = 1; });
+        for (var k2 = 1; k2 <= 5; k2++) if (!usadas[String(k2)]) libres.push(String(k2));
+      }
+      for (var i = 0; i < n; i++) {
+        var v = (items && items[i]) ? mapFn(items[i]) : ["", "", "", ""];
+        if (!v[0] && numera && libres.length) v[0] = libres.shift();
+        fila("dato", 33, [c(v[0], 1, numera ? 1 : 0, numera ? 1 : 0), c(v[1]), c(v[2]), c(v[3], 2)]);
+      }
+    }
+    function seccion5(titulo, altoCab, cabeceras, items, mapFn, filasMin) {
+      fila("seccion", 27, [c(titulo, 5)]);
+      fila("cabecera", altoCab, cabeceras.map(function (x) { return c(x); }));
+      var n = Math.max(filasMin, (items || []).length);
+      for (var i = 0; i < n; i++) {
+        var v = (items && items[i]) ? mapFn(items[i]) : ["", "", "", "", ""];
+        fila("dato", 33, [c(v[0]), c(v[1]), c(v[2]), c(v[3]), c(v[4])]);
+      }
+    }
+
+    seccion4("I. SALAS DE PARTO INTEGRAL", 24,
+      ["N° SALA", IDENT, "DIAGNÓSTICO PRINCIPAL ", "CONDICION ACTUAL"],
+      t.partoIntegral, function (x) {
+        return [x.sala || "", fmtIdent(x.ident), x.diagnosticos || "",
+                compacta([DC.fmtBishopCompacto(x), DC.fmtMefiCompacto(x), x.gibbsTxt, x.manejo, x.condicion, x.heredadaCorto])];
+      }, 6, true);
+
+    seccion4("II. SALAS DE OBSERVACION", 27,
+      ["N° SALA", IDENT, "DIAGNÓSTICO PRINCIPAL ", "CONDICION ACTUAL"],
+      t.observacion, function (x) {
+        return [String(x.n || "").replace(/^SOGO\s*/i, ""), fmtIdent(x.ident), x.diagnosticos || "",
+                compacta([x.condicion, x.heredadaCorto])];
+      }, 7, true);
+
+    // Censo de la unidad: otras unidades + las heredadas que siguen hospitalizadas
+    var censo = (t.otrasUnidades || []).map(function (x) {
+      return { cama: [x.servicio, x.cama].filter(Boolean).join(" "), ident: x.ident, dx: x.diagnosticos || "",
+               cond: compacta([x.condicion, x.heredadaCorto]) };
+    }).concat((t.ingresos || []).filter(function (x) { return x.heredada && x.continuaHosp; }).map(function (x) {
+      return { cama: [x.unidad, x.cama].filter(Boolean).join(" "), ident: x.ident, dx: x.diagnosticos || "",
+               cond: compacta([x.manejo, x.condicion, x.heredadaCorto]) };
+    }));
+    seccion4("III. PACIENTES EN UNIDAD DE OBSTETRICIA Y GINECOLOGIA Y/U OTRAS UNIDADES", 27,
+      ["N° CAMA", IDENT, "DIAGNÓSTICO PRINCIPAL ", "CONDICION ACTUAL"],
+      censo, function (x) { return [x.cama, fmtIdent(x.ident), x.dx, x.cond]; }, 11, false);
+
+    var nIv = 0;
+    seccion5("IV. INTERVENCIONES GINECOLÓGICAS", 24.75,
+      ["N° ", IDENT, "DIAGNÓSTICO PRINCIPAL ", "INTERVENCION", "CONDICION ACTUAL"],
+      pab, function (x) {
+        return [String(++nIv), fmtIdent(x.ident), x.diagnostico || "", x.intervencion || "",
+                compacta([x.condicion, x.ubicacion])];
+      }, 6);
+
+    // Ingresos del turno: la heredada no lo es, ya figura en el censo (III)
+    var ingNuevos = (t.ingresos || []).filter(function (x) { return !x.heredada; });
+    seccion5("V. INGRESOS A HOSPITALIZACION", 23.25,
+      ["N° CAMA", IDENT, "DIAGNÓSTICOS", "CONDICION ACTUAL Y MANEJO PROPUESTO", "COMENTARIOS"],
+      ingNuevos, function (x) {
+        return [[x.unidad, x.cama].filter(Boolean).join(" "), fmtIdent(x.ident), x.diagnosticos || "",
+                compacta([DC.fmtEvalIngreso(x), x.manejo, x.condicion]), x.comentarios || ""];
+      }, 7);
+
+    var nNa = 0;
+    seccion5("VI. NACIMIENTOS", 23.25,
+      ["N° ", IDENT, "TIPO DE PARTO", "INFORMACIÓN DEL RECIEN NACIDO", "COMENTARIOS"],
+      nac, function (x) {
+        return [String(++nNa), (x.nombre || "") + (x.ficha ? " · Ficha " + x.ficha : ""), x.tipoParto || "",
+                DC.fmtResultado(x), compacta([resolucionNoRedundante(x), x.comentarios])];
+      }, 6);
+
+    for (var b = 0; b < 5; b++) fila("vacio", 12.75, [c("", 5)]);
+    fila("vacio", 13.5, [c("", 5)]);
+    fila("firmaNombre", 24.75, [c(""), c(meta.nombreSaliente || (meta.staff || []).join(" / ")), c(""), c(meta.entrante || ""), c("")]);
+    fila("firmaRotulo", 26.25, [c(""), c("NOMBRE MÉDICO JEFE DE TURNO SALIENTE"), c(""), c("NOMBRE MÉDICO JEFE DE TURNO ENTRANTE"), c("")]);
+    return G;
+  }
+
+  // fuente / relleno / alineación por tipo de fila
+  var TIPO_OF = {
+    titulo:      { f: 4, r: 2, al: 2 },
+    meta:        { f: 2, r: 0, al: 0 },
+    seccion:     { f: 3, r: 3, al: 2 },
+    cabecera:    { f: 1, r: 4, al: 1 },
+    dato:        { f: 0, r: 0, al: 0 },
+    vacio:       { f: 0, r: 0, al: 0 },
+    firmaNombre: { f: 2, r: 0, al: 2 },
+    firmaRotulo: { f: 2, r: 0, al: 1 }
+  };
+
+  // La fila vacía conserva el alto del formulario; la que lleva paciente se libera
+  // para que la hoja de cálculo la estire. Determinista: nunca recorta texto clínico.
+  function filaVacia(f) {
+    // el número de sala o de cama (columna A) no cuenta: la fila sigue siendo de relleno
+    var col = 0, hay = false;
+    f.celdas.forEach(function (cc) {
+      if (col > 0 && String(cc.v == null ? "" : cc.v).trim()) hay = true;
+      col += cc.span;
+    });
+    return !hay;
+  }
+  function buildSheetOficial(turno) {
+    var G = grillaOficial(turno), merges = [], acu = AcunadorEstilos();
+    var SIN_BORDE = 16;
+
+    // El marco pertenece al BLOQUE: una celda combinada lleva medium en los costados
+    // que tocan el borde del bloque, y thin en los interiores.
+    function borde(tipo, c0, c1, primeraDelBloque, ultimaDelBloque) {
+      if (tipo === "vacio") return SIN_BORDE;
+      var b = 0;
+      if (c0 === 0) b |= 1;
+      if (c1 === 4) b |= 2;
+      if (tipo === "meta") b = 1 | 2 | 4 | 8;         // cada dato del encabezado es una caja
+      else if (tipo === "cabecera") b |= 1 | 4 | 8;   // la cabecera separa columnas con línea gruesa
+      else if (tipo === "dato") {
+        if (primeraDelBloque) b |= 4;
+        if (ultimaDelBloque) b |= 8;
+      } else if (tipo === "firmaNombre") { b |= 1 | 2 | 4; }
+      else if (tipo === "firmaRotulo") { b |= 1 | 2 | 8; }
+      else { b |= 4 | 8; }                            // título, meta, sección
+      return b;
+    }
+
+    var sd = G.map(function (f, i) {
+      var n = i + 1, col = 0, xml = "";
+      var t = TIPO_OF[f.tipo] || TIPO_OF.dato;
+      var esPrimera = f.tipo === "dato" && (i === 0 || G[i - 1].tipo !== "dato");
+      var esUltima = f.tipo === "dato" && (i === G.length - 1 || G[i + 1].tipo !== "dato");
+      var firma = (f.tipo === "firmaNombre" || f.tipo === "firmaRotulo");
+      f.celdas.forEach(function (cc, idx) {
+        var c0 = col, c1 = col + cc.span - 1;
+        // en el pie de firma solo las columnas B y D llevan caja
+        var tipoCel = firma ? ((c0 === 1 || c0 === 3) ? f.tipo : "vacio") : f.tipo;
+        var bi = borde(tipoCel, c0, c1, esPrimera, esUltima);
+        var st = acu.id(cc.fz != null ? cc.fz : t.f, t.r, bi, (cc.al != null ? cc.al : t.al));
+        for (var k = 0; k < cc.span; k++) {
+          var ref = colLetter(c0 + k + 1) + n;
+          if (k === 0 && cc.v !== "" && cc.v != null)
+            xml += '<c r="' + ref + '" s="' + st + '" t="inlineStr"><is><t xml:space="preserve">' + esc(cc.v) + '</t></is></c>';
+          else xml += '<c r="' + ref + '" s="' + st + '"/>';
+        }
+        if (cc.span > 1 && f.tipo !== "vacio") merges.push(colLetter(c0 + 1) + n + ":" + colLetter(c1 + 1) + n);
+        col += cc.span;
+      });
+      // La fila de datos conserva el alto del formulario mientras el texto quepa;
+      // si no cabe se libera para que la hoja de cálculo la estire y no recorte nada.
+      var ch = (f.tipo !== "dato" || filaVacia(f)) ? ' customHeight="1"' : "";
+      return '<row r="' + n + '" ht="' + f.alto + '"' + ch + '>' + xml + '</row>';
+    }).join("");
+
+    var est = estilosOficial();
+    var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<fonts count="' + FUENTES_OF.length + '">' + est.fonts + '</fonts>' +
+      '<fills count="' + (RELLENOS_OF.length) + '">' + est.fills + '</fills>' +
+      '<borders count="' + est.nBordes + '">' + est.bordes + '</borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="' + acu.xml().length + '">' + acu.xml().join("") + '</cellXfs>' +
+      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+
+    var cols = '<cols>' +
+      '<col min="1" max="1" width="' + ANCHO_A + '" customWidth="1"/>' +
+      '<col min="2" max="2" width="' + ANCHO_B + '" customWidth="1"/>' +
+      '<col min="6" max="6" width="' + ANCHO_DEF + '" customWidth="1"/>' +
+      '</cols>';
+    var mc = merges.length ? '<mergeCells count="' + merges.length + '">' +
+      merges.map(function (m) { return '<mergeCell ref="' + m + '"/>'; }).join("") + '</mergeCells>' : "";
+    // Impresión: la del libro del servicio, copiada tal cual
+    var pageSetup =
+      '<pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>' +
+      '<pageSetup paperSize="41" orientation="portrait" scale="76" fitToWidth="1" fitToHeight="0"/>';
+    var sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
+      '<sheetFormatPr defaultColWidth="' + ANCHO_DEF + '" defaultRowHeight="15.75"/>' +
+      cols + '<sheetData>' + sd + '</sheetData>' + mc + pageSetup + '</worksheet>';
+    return { sheet: sheet, styles: styles };
+  }
+
+  function empaquetar(sheetXml, stylesXml, sheetName) {
+    var contentTypes =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      '</Types>';
+    var rootRels =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '</Relationships>';
+    var workbook =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      '<sheets><sheet name="' + esc(sheetName) + '" sheetId="1" r:id="rId1"/></sheets></workbook>';
+    var wbRels =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      '</Relationships>';
+    return DC.zipStore([
+      { name: "[Content_Types].xml", data: strBytes(contentTypes) },
+      { name: "_rels/.rels", data: strBytes(rootRels) },
+      { name: "xl/workbook.xml", data: strBytes(workbook) },
+      { name: "xl/_rels/workbook.xml.rels", data: strBytes(wbRels) },
+      { name: "xl/styles.xml", data: strBytes(stylesXml) },
+      { name: "xl/worksheets/sheet1.xml", data: strBytes(sheetXml) }
+    ]);
+  }
+
+  function buildXlsxOficial(turno) {
+    var o = buildSheetOficial(turno);
+    return empaquetar(o.sheet, o.styles, nombreHoja((turno && turno.meta && turno.meta.fecha) || ""));
+  }
+
+  var api = { buildXlsx: buildXlsx, buildXlsxOficial: buildXlsxOficial, nombreHojaOficial: nombreHoja, grillaOficial: grillaOficial };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.XlsxCore = api;
 })(typeof self !== "undefined" ? self : this);
@@ -1491,6 +1888,29 @@
   var CATALOGOS_FABRICA = {
     ubicaciones: ["Observación (SOGO)", "Preparto", "Pabellón", "Parto", "Sala", "Otro servicio", "Peritaje", "Alta"],
     unidadesSala: ["ARO", "Ginecología", "Puerperio"],
+    // De dónde llega la paciente a Preparto: las tres puertas habituales del servicio
+    origenPreparto: ["Box — actividad de matrona", "SOGO — indicación médica",
+                     "ARO — para inducción", "Otro servicio", "Traslado de otro centro"],
+    // De dónde llega la paciente a SOGO: es la puerta del servicio para toda la red
+    // de la Macrozona Norte Grande, y la agregación de este campo mide esa carga.
+    origenSOGO: ["Espontánea — llega por sus medios",
+                 "Derivada de APS (CESFAM, posta, consultorio)",
+                 "Derivada de otro hospital o clínica",
+                 "Derivada de otra ciudad de la región (Calama, Tocopilla, …)",
+                 "Derivada de otra región (Macrozona Norte Grande)",
+                 "Devuelta desde Preparto",
+                 "Desde otro servicio del hospital"],
+    // Carácter temporal de la urgencia: no hay cirugía programada en turno de urgencia
+    caracterQx: ["Inmediata", "Diferida durante el turno"],
+    // De dónde llega la paciente al pabellón
+    origenPabellon: ["Box de urgencia", "SOGO", "Preparto", "Sala ARO", "Sala Ginecología",
+                     "Sala Puerperio", "Otro servicio (cirugía, urología, …)",
+                     "Consulta intraoperatoria (cirugía de otra especialidad)"],
+    // Por qué sale de Preparto sin parto ni cesárea
+    motivoRetornoARO: ["No cumple criterios de ingreso a Preparto",
+                       "Bishop desfavorable, membranas íntegras, sin dinámica uterina",
+                       "Falso trabajo de parto", "Inducción suspendida",
+                       "Maduración cervical en curso, sin trabajo de parto"],
     camasARO: [], camasGinecologia: [], camasPuerperio: [],
     indicacionesARO: ["Corticoides para maduración pulmonar", "Tocólisis", "Sulfato de magnesio",
       "Antihipertensivos", "Antibióticos", "Control de presión arterial seriado", "RBNS / monitorización",
@@ -1971,52 +2391,6 @@
         return { texto: "Sin rasgos marcados: no concluyente" + col + ".", nivel: "gris" };
       }
     },
-    fullpiers: {
-      nombre: "fullPIERS", subtitulo: "Riesgo materno a 48 h en preeclampsia", categoria: "Obstétrico",
-      ambito: ["OBSERVACION", "SALA"],
-      nota: "Ecuación publicada: von Dadelszen P et al. Lancet 2011;377:219-227 (AUC 0,88). " +
-            "Unidades: creatinina en µmol/L, plaquetas ×10⁹/L, AST U/L. Si no hay oximetría, se usa 97%.",
-      enlace: "https://perinatology.com/calculators/fulpiers.htm",
-      items: [{ k: "dolor", t: "Dolor torácico o disnea" }],
-      numericos: [
-        { k: "egSem", t: "EG (semanas)" }, { k: "spo2", t: "SpO₂ (%) · 97 si se desconoce" },
-        { k: "plaq", t: "Plaquetas (×10⁹/L)" }, { k: "creat", t: "Creatinina (µmol/L)" },
-        { k: "ast", t: "AST (U/L)" }
-      ],
-      evaluar: function (v) {
-        v = v || {};
-        var ga = parseFloat(v.egSem), plt = parseFloat(v.plaq), cr = parseFloat(v.creat), ast = parseFloat(v.ast);
-        var spo2 = v.spo2 === "" || v.spo2 == null ? 97 : parseFloat(v.spo2);
-        if (isNaN(spo2)) spo2 = 97;
-        var dolor = v.dolor ? 1 : 0;
-        if (isNaN(ga) || isNaN(plt) || isNaN(cr) || isNaN(ast)) {
-          return { texto: "Faltan variables: EG, plaquetas, creatinina y AST son obligatorias.", nivel: "gris" };
-        }
-        // logit(p) — ecuación fullPIERS (Lancet 2011)
-        var logit = 2.68
-          + (-5.41e-2 * ga)
-          + (1.23 * dolor)
-          + (-2.71e-2 * cr)
-          + (2.07e-1 * plt)
-          + (4.00e-5 * plt * plt)
-          + (1.01e-2 * ast)
-          + (-3.05e-6 * ast * ast)
-          + (2.50e-4 * cr * plt)
-          + (-6.99e-5 * plt * ast)
-          + (-2.56e-3 * plt * spo2);
-        var p = 1 / (1 + Math.exp(-logit));
-        var pct = Math.round(p * 1000) / 10;
-        var lectura = pct >= 30 ? "riesgo muy alto (umbral de rule-in ≥ 30%): considerar traslado a mayor complejidad e interrupción"
-                    : pct >= 10 ? "riesgo intermedio: vigilancia estrecha y reevaluación"
-                    : pct >= 2.5 ? "riesgo bajo"
-                    : "riesgo muy bajo (VPN ≈ 99,6% bajo 2,5%)";
-        return { n: pct,
-          texto: "fullPIERS " + pct + "% de resultado materno adverso a 48 h — " + lectura +
-                 ". (EG " + ga + " sem, SpO₂ " + spo2 + "%, plaquetas " + plt + ", creatinina " + cr + ", AST " + ast +
-                 (dolor ? ", dolor torácico/disnea" : "") + "; logit " + (Math.round(logit * 1000) / 1000) + ")",
-          nivel: pct >= 30 ? "rojo" : pct >= 10 ? "ambar" : "verde" };
-      }
-    },
     triplei: {
       nombre: "Triple I", subtitulo: "Infección/inflamación intraamniótica", categoria: "Obstétrico",
       ambito: ["OBSERVACION", "PREPARTO", "SALA"],
@@ -2116,28 +2490,38 @@
           nivel: pct >= 30 ? "rojo" : pct >= 10 ? "ambar" : "verde" };
       }
     },
-    gibbs: {
-      nombre: "Criterios de Gibbs",
-      subtitulo: "Corioamnionitis clínica", categoria: "Obstétrico",
-      ambito: ["OBSERVACION", "PREPARTO", "SALA"],
-      nota: "Criterios clásicos de Gibbs. La definición actual de Triple I (Higgins RD et al. Obstet Gynecol 2016;127:426-36, DOI 10.1097/AOG.0000000000001246) usa temperatura ≥ 39,0 °C en una toma, o 38,0–38,9 °C repetida a los 30 minutos.",
-      obligatorio: { k: "fiebre", t: "Fiebre materna ≥ 37,8 °C", nota: "Criterio indispensable" },
-      items: [
-        { k: "taqM", t: "Taquicardia materna > 100 lpm" },
-        { k: "taqF", t: "Taquicardia fetal > 160 lpm" },
-        { k: "sensU", t: "Sensibilidad uterina" },
-        { k: "laPur", t: "Líquido amniótico purulento o de mal olor" },
-        { k: "leuco", t: "Leucocitosis > 15.000/mm³" }
-      ],
+    // Bishop y MEFI viven también en la calculadora. Su lógica clínica es la misma que usa
+    // la ficha de la paciente (DocxCore), para que no existan dos verdades.
+    bishop: {
+      nombre: "Score de Bishop", subtitulo: "Favorabilidad cervical · lectura según contexto", categoria: "Obstétrico",
+      ambito: ["PREPARTO", "OBSERVACION", "SALA"], render: "bishop",
+      nota: "Bishop EH. Obstet Gynecol 1964;24:266-8. A término el puntaje mide favorabilidad para inducción/conducción (≥8 favorable, 6-7 intermedio, ≤5 desfavorable). En amenaza de parto prematuro el mismo puntaje se lee al revés: cuantifica cambios cervicales y, con ellos, riesgo de parto prematuro inminente.",
       evaluar: function (v) {
+        var D = (typeof DocxCore !== "undefined") ? DocxCore : null;
+        if (!D) return { texto: "", nivel: "gris" };
         v = v || {};
-        var menores = this.items.filter(function (i) { return v[i.k]; }).length;
-        if (!v.fiebre) {
-          return { n: menores, texto: menores ? "Sin fiebre: no se cumplen los criterios de Gibbs (" + menores + " criterio(s) menor(es))." : "",
-                   nivel: "gris" };
-        }
-        if (menores >= 2) return { n: menores, texto: "Criterios de Gibbs POSITIVOS (fiebre + " + menores + " criterios menores): corioamnionitis clínica.", nivel: "rojo" };
-        return { n: menores, texto: "Fiebre materna con " + menores + " criterio(s) menor(es): no cumple Gibbs. Buscar otro foco y reevaluar.", nivel: "ambar" };
+        var s = D.bishopPuntos(v), ctx = v.contexto || "";
+        if (s == null) return { texto: "", nivel: "gris" };
+        var nivel = (ctx === "Pretérmino") ? (s >= 6 ? "rojo" : s >= 4 ? "ambar" : "verde")
+                                           : (s >= 8 ? "verde" : s >= 6 ? "ambar" : "rojo");
+        var du = D.fmtBishopCompacto({ bishop: v });
+        return { n: s, nivel: nivel,
+          texto: "Bishop " + s + "/13" + (ctx ? " (" + ctx.toLowerCase() + ")" : "") + " — " +
+                 D.bishopInterpretacion(s, ctx) +
+                 (v.membranas ? ". Membranas " + v.membranas.toLowerCase() : "") +
+                 (du && du.indexOf("DU") === 0 ? ". " + du.split(" · ")[0] : "") };
+      }
+    },
+    mefi: {
+      nombre: "MEFI — clasificación del trazado", subtitulo: "Monitorización electrónica fetal intraparto", categoria: "Obstétrico",
+      ambito: ["PREPARTO", "OBSERVACION", "SALA"], render: "mefi",
+      nota: "Macones GA et al. (NICHD 2008 Workshop Report). Obstet Gynecol 2008;112:661-6 (DOI 10.1097/AOG.0b013e3181841395). Categoría I normal; II indeterminado; III anormal (variabilidad ausente con desaceleraciones tardías o variables recurrentes o bradicardia, o patrón sinusoidal).",
+      evaluar: function (v) {
+        var D = (typeof DocxCore !== "undefined") ? DocxCore : null;
+        if (!D) return { texto: "", nivel: "gris" };
+        var c = D.mefiCategoria(v || {});
+        if (!c) return { texto: "", nivel: "gris" };
+        return { n: c, nivel: c === 1 ? "verde" : c === 2 ? "ambar" : "rojo", texto: D.mefiTexto(c) };
       }
     }
   };
@@ -2147,6 +2531,18 @@
     return { id: id, nombre: e.nombre, texto: r.texto, nivel: r.nivel, n: r.n };
   }
   function fmtEscala(id, v) { var r = evaluarEscala(id, v); return r && r.texto ? r.texto : ""; }
+
+  /* Las escalas no viven incrustadas en los formularios: serían interminables.
+     Cada etapa solo SUGIERE las que su ámbito declara, y la calculadora
+     flotante sigue siendo el único lugar donde se resuelven.                 */
+  function escalasSugeridas(tipo) {
+    var out = [];
+    Object.keys(ESCALAS).forEach(function (id) {
+      var d = ESCALAS[id], a = d && d.ambito;
+      if (a && a.length && a.indexOf(tipo) >= 0) out.push({ id: id, nombre: d.nombre, subtitulo: d.subtitulo || "" });
+    });
+    return out;
+  }
 
   /* ---------- 2. MÁQUINA DE ESTADOS --------------------------------------- */
   var ETAPAS = {
@@ -2164,7 +2560,7 @@
     INICIO:        ["OBSERVACION", "PREPARTO", "PABELLON", "SALA", "OTRO_SERVICIO", "PERITAJE"],
     OBSERVACION:   ["PREPARTO", "PABELLON", "SALA", "OTRO_SERVICIO", "ALTA"],
     PREPARTO:      ["PARTO", "PABELLON", "SALA", "OBSERVACION"],
-    PABELLON:      ["SALA", "OTRO_SERVICIO"],
+    PABELLON:      ["PARTO", "SALA", "OTRO_SERVICIO"],
     PARTO:         ["SALA", "PABELLON"],
     SALA:          ["PABELLON", "OTRO_SERVICIO", "ALTA"],
     OTRO_SERVICIO: ["PABELLON", "SALA", "OTRO_SERVICIO", "ALTA"],
@@ -2395,6 +2791,41 @@
     return v.map(function (x) { return x && x.n ? x.n + (x.r ? ": " + x.r : "") : ""; }).filter(Boolean).join(" · ");
   }
 
+  // La paciente HEREDADA ya estaba hospitalizada cuando recibimos el turno:
+  // su manejo viene establecido por el equipo anterior y el ingreso no es nuestro.
+  // No cuenta como ingreso del turno, pero sí se entrega (pendiente) y conserva su reloj.
+  function esHeredada(p) { return !!(p && p.heredada); }
+  function horasHospitalizada(p, fechaTurno) {
+    var h = p && p.heredada; if (!h || !h.desde) return null;
+    var d0 = new Date(h.desde + "T" + ((h.hora && /^\d\d:\d\d$/.test(h.hora)) ? h.hora : "00:00") + ":00");
+    if (isNaN(d0.getTime())) return null;
+    var ref = new Date();
+    if (fechaTurno && /^\d{4}-\d\d-\d\d$/.test(fechaTurno)) {
+      var hoy = new Date(); var f = new Date(fechaTurno + "T00:00:00");
+      // si el turno no es hoy, se mide contra el cierre nominal del turno (24 h del día del turno)
+      if (f.toDateString() !== hoy.toDateString()) ref = new Date(fechaTurno + "T23:59:00");
+    }
+    var hrs = Math.floor((ref - d0) / 3600000);
+    return (hrs < 0 || hrs > 24 * 90) ? null : hrs;
+  }
+  function textoHeredada(p, fechaTurno) {
+    var h = p && p.heredada; if (!h) return "";
+    var hrs = horasHospitalizada(p, fechaTurno);
+    return "Recibida del turno anterior" +
+      (h.desde ? " · hospitalizada desde " + dmyISO(h.desde) + (h.hora ? " " + h.hora : "") : "") +
+      (hrs != null ? " (" + hrs + " h)" : "");
+  }
+  // Forma breve para las columnas estrechas del Word; la fecha completa queda en el Excel
+  function textoHeredadaCorto(p, fechaTurno) {
+    if (!p || !p.heredada) return "";
+    var hrs = horasHospitalizada(p, fechaTurno);
+    return "Del turno anterior" + (hrs != null ? " · " + hrs + " h" : "");
+  }
+  function dmyISO(iso) {
+    if (!iso || !/^\d{4}-\d\d-\d\d$/.test(iso)) return iso || "";
+    var p = iso.split("-"); return p[2] + "-" + p[1] + "-" + p[0];
+  }
+
   // La paciente que ENTRÓ como interconsulta pertenece a otro servicio:
   // podemos operarla, pero nunca es un ingreso nuestro.
   function esDeOtroServicio(p) {
@@ -2409,6 +2840,8 @@
                 intervenciones: [], ingresos: [], nacimientos: [], peritajes: [] };
     (t5.pacientes || []).forEach(function (p) {
       var fin = tipoActual(p), id = p.ident || {};
+      var her = esHeredada(p), herTxt = her ? textoHeredada(p, (t5.meta || {}).fecha) : "";
+      var herCorto = her ? textoHeredadaCorto(p, (t5.meta || {}).fecha) : "";
       var enc = fmtObst(p.obst);
       function conEnc(dx) { return [enc, dx].filter(Boolean).join(", "); }
       var evol = cronologia(p).filter(function (e) { return e.tipo !== "Traslado"; })
@@ -2418,20 +2851,23 @@
       if (fin === "PREPARTO") {
         var d = etapaActual(p).datos || {};
         out.partoIntegral.push({ sala: d.sala || "", ident: id, diagnosticos: conEnc(txtLista(d.diagnosticos)),
+          origen: d.origen || "",
+          heredada: her, heredadaTxt: herTxt, heredadaCorto: herCorto,
           bishop: d.bishop, mefi: d.mefi, gibbsTxt: fmtEscala("triplei", d.triplei), manejo: txtLista(d.manejo),
           evolucion: [txtLista(d.evolucion), evol].filter(Boolean).join(" · "), condicion: d.condicion || "" });
       }
       if (fin === "OBSERVACION") {
         var o = etapaActual(p).datos || {};
         out.observacion.push({ n: (o.n ? "SOGO " + o.n : ""), ident: id, diagnosticos: conEnc(txtLista(o.diagnosticos)),
-          condicion: [fmtEscala("triplei", o.triplei), txtExam(o.examenes), (o.interconsulta ? "IC " + o.interconsulta + (o.motivoIC ? ": " + o.motivoIC : "") : ""),
+          heredada: her, heredadaTxt: herTxt, heredadaCorto: herCorto, origen: o.origen || "",
+          condicion: [o.origen || "", fmtEscala("triplei", o.triplei), txtExam(o.examenes), (o.interconsulta ? "IC " + o.interconsulta + (o.motivoIC ? ": " + o.motivoIC : "") : ""),
                       txtLista(o.manejo), o.condicion || "", evol].filter(Boolean).join(" · ") });
       }
       if (fin === "OTRO_SERVICIO") {
         var u = etapaActual(p).datos || {};
         var esIC = (u.tipoEstadia || "").indexOf("Interconsulta") === 0;   // regreso y traslado comparten formato
         out.otrasUnidades.push({ cama: u.cama || "", servicio: u.servicio || "", ident: id,
-          tipoEstadia: u.tipoEstadia || "",
+          tipoEstadia: u.tipoEstadia || "", heredada: her, heredadaTxt: herTxt, heredadaCorto: herCorto,
           diagnosticos: esIC
             ? [txtLista(u.motivo), u.diagnosticos || ""].filter(Boolean).join(" — ")
             : conEnc([diagnosticoVigente(p), txtLista(u.motivoTraslado)].filter(Boolean).join(" — ")),
@@ -2448,45 +2884,74 @@
       if (tuvoEtapa(p, "PABELLON")) {
         var q = ultimaEtapaDe(p, "PABELLON").datos || {};
         var inc = txtLista(q.incidencias);
-        var com = [q.hallazgos ? "Hallazgos: " + q.hallazgos : "",
-                   (q.curso === "Con incidentes" && inc) ? "Incidencias: " + inc : "Sin incidencias.",
-                   q.dxPost ? "Dx postoperatorio: " + q.dxPost : "",
+        var yaDice = /sin incidenc/i.test(q.hallazgos || "");
+        var com = [q.origen ? (/^Consulta intraoperatoria/.test(q.origen) ? q.origen + "." : "Desde " + q.origen + ".") : "",
+                   q.hallazgos ? "Hallazgos: " + q.hallazgos + (/[.;]$/.test(q.hallazgos) ? "" : ".") : "",
+                   (q.curso === "Con incidentes" && inc) ? "Incidencias: " + inc + "." : (yaDice ? "" : "Sin incidencias."),
+                   q.dxPost ? "Dx postoperatorio: " + q.dxPost + "." : "",
                    txtLista(q.indicaciones), q.comentarios || ""].filter(Boolean).join(" ");
         out.intervenciones.push({ ident: id, rama: q.rama || "",
+          caracter: q.caracter || "", origen: q.origen || "",
           diagnostico: q.dxPre || q.diagnostico || "",
-          intervencion: txtLista(q.intervencion) + (q.anestesia ? " · anestesia " + q.anestesia.toLowerCase() : ""),
-          equipo: q.equipo || "", comentarios: com });
+          // El carácter de la urgencia acompaña al acto, no a la especialidad: es lo
+          // que el turno siguiente necesita leer en la columna INTERVENCION.
+          intervencion: [q.caracter || "", txtLista(q.intervencion) + (q.anestesia ? " · anestesia " + q.anestesia.toLowerCase() : "")]
+            .filter(function (s) { return s && s.trim(); }).join(" · "),
+          equipo: q.equipo || "", comentarios: com,
+          // estado al cierre del turno: lo que la planilla oficial pide en "Condición actual"
+          condicion: ((etapaActual(p) || {}).datos || {}).condicion || "",
+          ubicacion: ETAPAS[fin] || "" });
       }
       // --- INGRESO: ocurre en el PUNTO DE INFLEXIÓN (box/SOGO → Preparto, Pabellón o Sala).
       //     Es UNO por paciente, con independencia de su recorrido posterior.
+      //     La HEREDADA ya venía hospitalizada: se entrega, pero su ingreso no es de este turno.
       var HOSP = { PREPARTO: 1, PABELLON: 1, SALA: 1 };
       var iIng = -1;
       if (!esDeOtroServicio(p)) {
         for (var z = 0; z < (p.etapas || []).length; z++) { if (HOSP[p.etapas[z].tipo]) { iIng = z; break; } }
+        // su "punto de ingreso" es donde la recibimos, aunque esa etapa no sea de hospitalización
+        if (her && iIng < 0 && (p.etapas || []).length) iIng = 0;
       }
       if (iIng >= 0) {
         var eIng = p.etapas[iIng], dIng = eIng.datos || {};
         var salaFin = ultimaEtapaDe(p, "SALA");
         var sf = salaFin ? (salaFin.datos || {}) : {};
         var pre = ultimaEtapaDe(p, "PREPARTO");
-        var vieneDeObs = p.etapas.slice(0, iIng).some(function (e) { return e.tipo === "OBSERVACION"; });
-        var unidadDest = sf.unidad || (eIng.tipo === "PREPARTO" ? "Preparto" : (eIng.tipo === "PABELLON" ? "Pabellón" : ""));
+        var previas = p.etapas.slice(0, iIng);
+        var vieneDeObs = previas.some(function (e) { return e.tipo === "OBSERVACION"; });
+        // La procedencia EXTERNA se declara en SOGO, que es la puerta del servicio.
+        // El "origen" de Preparto o Pabellón dice de qué puerta interna vino, no de dónde llegó.
+        var obs0 = previas.filter(function (e) { return e.tipo === "OBSERVACION"; })[0] ||
+                   (eIng.tipo === "OBSERVACION" ? eIng : null);
+        var origExt = (obs0 && obs0.datos && obs0.datos.origen) || "";
+        var eFin = etapaActual(p), dFin = (eFin && eFin.datos) || {};
+        var unidadDest = sf.unidad ||
+          (fin === "OTRO_SERVICIO" ? (dFin.servicio || "Otro servicio") :
+           fin === "PREPARTO" ? "Preparto" :
+           (eIng.tipo === "PREPARTO" ? "Preparto" : (eIng.tipo === "PABELLON" ? "Pabellón" : "")));
         var esObst = tuvoEtapa(p, "PREPARTO") || tuvoEtapa(p, "PARTO") ||
                      /aro|puerperio/i.test(unidadDest || "") || /obst/i.test(dIng.rama || "");
         out.ingresos.push({
-          procedencia: vieneDeObs ? "Desde observación" : "Directo desde box",
-          horaIngreso: eIng.hora || "",
-          cama: sf.cama || dIng.cama || "",
+          heredada: her, heredadaTxt: herTxt, heredadaCorto: herCorto,
+          // la heredada continúa bajo nuestro cuidado aunque su etapa final sea Sala
+          continuaHosp: her && (fin === "SALA" || fin === "PABELLON"),
+          procedencia: her ? "Turno anterior"
+            : vieneDeObs ? ("Desde SOGO" + (origExt ? " · " + origExt : ""))
+            : (origExt || dIng.origen || "Directo desde box"),
+          horaIngreso: her ? ((p.heredada.desde ? dmyISO(p.heredada.desde) : "") + (p.heredada.hora ? " " + p.heredada.hora : "")).trim() : (eIng.hora || ""),
+          cama: sf.cama || dFin.cama || dIng.cama || "",
           unidad: unidadDest,
           ubicacionActual: ETAPAS[fin] || "",
+          sigueEnUnidad: (fin === "PREPARTO" || fin === "OBSERVACION" || fin === "OTRO_SERVICIO"),
           tipoIngreso: esObst ? "Obstétrica" : "Ginecológica",
           ident: id,
           diagnosticos: conEnc(txtLista(dIng.diagnosticos) || dIng.dxPre || dIng.diagnostico || diagnosticoVigente(p)),
           bishop: (pre && pre.datos.bishop) || sf.bishop, mefi: (pre && pre.datos.mefi) || sf.mefi,
           examenGin: sf.examenGin || "", sangrado: sf.sangrado || "", dolorEVA: sf.dolorEVA || "",
           manejo: txtLista(sf.manejo) || txtLista(dIng.manejo) || "",
-          condicion: sf.condicion || "",
-          comentarios: [txtLista(sf.pendientes) ? "Pendientes: " + txtLista(sf.pendientes) : "", sf.comentarios || ""].filter(Boolean).join(" · ")
+          condicion: [sf.retorno ? "Devuelta desde Preparto: " + sf.retorno : "", sf.condicion || ""].filter(Boolean).join(" · "),
+          // "Condición" es el estado al cierre; la evolución es el relato, y va aparte
+          comentarios: [sf.evolucion || "", txtLista(sf.pendientes) ? "Pendientes: " + txtLista(sf.pendientes) : "", sf.comentarios || ""].filter(Boolean).join(" · ")
         });
       }
 
@@ -2525,6 +2990,7 @@
 
   var api = {
     ESCALAS: ESCALAS, percentilUtA: percentilUtA, percentilFMF: percentilFMF, zAPercentil: zAPercentil, evaluarEscala: evaluarEscala, fmtEscala: fmtEscala,
+    escalasSugeridas: escalasSugeridas,
     CATALOGOS_FABRICA: CATALOGOS_FABRICA, catalogosPorDefecto: catalogosPorDefecto,
     catalogoLeer: catalogoLeer, catalogoRestaurar: catalogoRestaurar,
     ETAPAS: ETAPAS, TRANSICIONES: TRANSICIONES, destinosValidos: destinosValidos, cierraCaso: cierraCaso,
@@ -2533,7 +2999,9 @@
     tuvoEtapa: tuvoEtapa, ultimaEtapaDe: ultimaEtapaDe,
     agregarEtapa: agregarEtapa, agregarEvento: agregarEvento, cronologia: cronologia, diagnosticoVigente: diagnosticoVigente,
     esV4: esV4, adaptarV4: adaptarV4,
-    derivarSecciones: derivarSecciones, esDeOtroServicio: esDeOtroServicio, fmtObst: fmtObst, lecturaCCA: lecturaCCA, txtLista: txtLista, txtExam: txtExam, txtProcParto: txtProcParto, resumenProcParto: resumenProcParto, minutosEntre: minutosEntre, glosa: glosa, GLOSARIO: GLOSARIO, etiquetaIntervalo: etiquetaIntervalo, agrupadasPorUbicacion: agrupadasPorUbicacion
+    derivarSecciones: derivarSecciones, esDeOtroServicio: esDeOtroServicio,
+    esHeredada: esHeredada, horasHospitalizada: horasHospitalizada, textoHeredada: textoHeredada, textoHeredadaCorto: textoHeredadaCorto, dmyISO: dmyISO,
+    fmtObst: fmtObst, lecturaCCA: lecturaCCA, txtLista: txtLista, txtExam: txtExam, txtProcParto: txtProcParto, resumenProcParto: resumenProcParto, minutosEntre: minutosEntre, glosa: glosa, GLOSARIO: GLOSARIO, etiquetaIntervalo: etiquetaIntervalo, agrupadasPorUbicacion: agrupadasPorUbicacion
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.V5Core = api;
@@ -2616,6 +3084,12 @@
     var bar = $(".bar");
     if (bar) bar.style.display = esMain ? "flex" : "none";
     document.body.style.paddingBottom = esMain ? "132px" : "24px";
+    // La calculadora acompaña a la paciente; estorba sobre el lienzo de firma
+    var fab = $("#fabCalc");
+    if (fab) {
+      fab.style.display = (id === "#scrFirma") ? "none" : "flex";
+      fab.style.bottom = "calc(env(safe-area-inset-bottom) + " + (esMain ? 96 : 22) + "px)";
+    }
     window.scrollTo(0, 0);
   }
 
@@ -2636,45 +3110,66 @@
 
   /* ---------- campos por etapa ---------- */
   var CAMPOS = {
-    OBSERVACION: [["n", "Cama SOGO", "sogo"], ["diagnosticos", "Diagnóstico", "area"],
+    // Cada módulo sigue la misma secuencia: INGRESO · EVOLUCIÓN · (desenlaces en “Siguiente etapa”).
+    OBSERVACION: [["_i", "Ingreso", "paso"],
+                  ["n", "Cama SOGO", "sogo"],
+                  ["origen", "Procedencia", "cat:origenSOGO"],
+                  ["diagnosticos", "Diagnóstico", "area"],
                   ["examenes", "Exámenes solicitados", "examenes"],
+                  ["_e", "Evolución", "paso"],
                   ["interconsulta", "Interconsulta", "cat:otrosServicios"], ["motivoIC", "Motivo de la interconsulta", "text"],
-                  ["triplei", "Triple I (infección intraamniótica)", "escala:triplei"],
-                  ["manejo", "Manejo", "area"], ["condicion", "Condición actual", "area"]],
-    PREPARTO:    [["sala", "Sala de preparto", "sala"],
+                  ["manejo", "Manejo", "area"], ["condicion", "Condición actual", "area"],
+                  ["_c", "", "calc"]],
+    PREPARTO:    [["_i", "Ingreso", "paso"],
+                  ["sala", "Sala de preparto", "sala"],
+                  ["origen", "Procedencia", "cat:origenPreparto"],
                   ["diagnosticos", "Diagnósticos", "lista:dxPreparto"],
                   ["bishop", "Tacto vaginal · Bishop", "bishop"], ["mefi", "MEFI", "mefi"],
-                  ["triplei", "Triple I (infección intraamniótica)", "escala:triplei"],
+                  ["_e", "Evolución", "paso"],
                   ["manejo", "Manejo", "listadet:manejoPreparto"],
-                  ["condicion", "Condición / información anexa", "area"]],
-    PABELLON:    [["rama", "Tipo de cirugía", "cat:ramasPabellon"],
+                  ["condicion", "Evolución / información anexa", "area"],
+                  ["_c", "", "calc"]],
+    PABELLON:    [["_i", "Preoperatorio", "paso"],
+                  ["rama", "Tipo de cirugía", "cat:ramasPabellon"],
+                  ["caracter", "Carácter de la urgencia", "cat:caracterQx"],
+                  ["origen", "Procedencia", "cat:origenPabellon"],
                   ["dxPre", "Diagnóstico preoperatorio", "area"],
-                  ["intervencion", "Procedimiento realizado", "lista:procedimientosQx"],
                   ["anestesia", "Anestesia", "cat:anestesia"],
                   ["equipo", "Equipo quirúrgico", "text"],
+                  ["_e", "Intraoperatorio", "paso"],
+                  ["intervencion", "Procedimiento realizado", "lista:procedimientosQx"],
                   ["hallazgos", "Hallazgos", "area"],
                   ["curso", "Curso de la cirugía", "cat:cursoParto"],
                   ["incidencias", "Incidencias", "lista:incidenciasQx", "Con incidentes"],
+                  ["_p", "Postoperatorio", "paso"],
                   ["dxPost", "Diagnóstico postoperatorio", "area"],
-                  ["indicaciones", "Indicaciones y muestras", "lista:indicacionesQx"]],
-    PARTO:       [["diagnostico", "Diagnóstico", "area"], ["tipoParto", "Vía de parto", "cat:viasParto"],
+                  ["indicaciones", "Indicaciones y muestras", "lista:indicacionesQx"],
+                  ["_c", "", "calc"]],
+    PARTO:       [["_i", "Atención del parto", "paso"],
+                  ["diagnostico", "Diagnóstico", "area"], ["tipoParto", "Vía de parto", "cat:viasParto"],
                   ["atendidoPor", "Parto atendido por", "cat:atendidoPor"],
                   ["horaParto", "Hora del parto", "hora"],
                   ["incidentes", "Curso del parto", "cat:cursoParto"],
                   ["procedimientos", "Procedimientos e incidentes", "procparto", "Con incidentes"],
                   ["resultado", "Resultado (RN)", "rn"],
-                  ["choque", "Índice de choque", "escala:choque"],
+                  ["_e", "Evolución materna", "paso"],
                   ["estadoMaterno", "Estado materno al cierre", "cat:estadoMaterno"],
+                  ["comentarios", "Puerperio inmediato", "lista:puerperio"],
                   ["novedadRN", "Novedad neonatal informada posteriormente", "area"],
-                  ["comentarios", "Puerperio inmediato", "lista:puerperio"]],
-    SALA:        [["unidad", "Unidad", "cat:unidadesSala"],
+                  ["_c", "", "calc"]],
+    SALA:        [["_i", "Ingreso", "paso"],
+                  ["unidad", "Unidad", "cat:unidadesSala"],
                   ["cama", "Cama", "cama"],
+                  ["retorno", "Motivo del retorno desde Preparto", "cat:motivoRetornoARO", { k: "retorno", v: "*" }],
                   ["diagnosticos", "Diagnósticos", "area"],
                   ["manejo", "Indicaciones al ingreso", "listadet:indicacionesARO", { k: "unidad", v: "ARO" }],
                   ["manejo", "Indicaciones al ingreso", "listadet:indicacionesGine", { k: "unidad", v: "Ginecología" }],
                   ["manejo", "Indicaciones al ingreso", "listadet:indicacionesPuerperio", { k: "unidad", v: "Puerperio" }],
+                  ["_e", "Evolución", "paso"],
+                  ["evolucion", "Evolución en sala", "area"],
                   ["pendientes", "Pendientes para el equipo de sala", "listadet:pendientesSala"],
-                  ["condicion", "Condición actual", "area"]],
+                  ["condicion", "Condición actual", "area"],
+                  ["_c", "", "calc"]],
     OTRO_SERVICIO: [["tipoEstadia", "Tipo de estadía", "cat:tipoEstadia"],
                   ["servicio", "Servicio", "cat:otrosServicios"], ["cama", "Cama", "short"],
                   // --- paciente NUESTRA trasladada (post-operatorio, UCI/UTI): hereda todo
@@ -2688,7 +3183,8 @@
                   ["conducta", "Conducta", "listadet:conductaIC", { k: "tipoEstadia", v: "Interconsulta (paciente de otro servicio)" }],
                   ["controlNuestro", "¿Requiere control nuestro?", "cat:controlNuestro", { k: "tipoEstadia", v: "Interconsulta (paciente de otro servicio)" }],
                   // --- común
-                  ["condicion", "Condición actual", "area"]],
+                  ["condicion", "Condición actual", "area"],
+                  ["_c", "", "calc"]],
     PERITAJE:    [["autorizada", "Autorizada por Fiscalía", "check"], ["realizada", "Realizada", "check"],
                   ["condicion", "Observaciones", "area"]],
     ALTA:        [["destino", "Destino", "cat:destinosAlta"], ["condicion", "Indicaciones / control", "area"]]
@@ -2697,7 +3193,9 @@
   /* ---------- lista principal ---------- */
   function contadores() {
     var d = V5.derivarSecciones(state.turno);
-    return { nac: d.nacimientos.length, interv: d.intervenciones.length, box: state.turno.urgencia.consultas || 0 };
+    // mismo criterio que el informe: la cesárea se cuenta como nacimiento, no como intervención ginecológica
+    var gin = d.intervenciones.filter(function (x) { return !/^obst/i.test(x.rama || ""); });
+    return { nac: d.nacimientos.length, interv: gin.length, box: state.turno.urgencia.consultas || 0 };
   }
   function pintarMain() {
     var c = contadores();
@@ -2725,6 +3223,8 @@
           (id.ficha ? " · Ficha " + esc(id.ficha) : "") + (id.dau ? " · DAU " + esc(id.dau) : "") + '</div>' +
           (sub ? '<div class="dx">' + esc(sub) + '</div>' : "") +
           '<div class="row2"><span class="chip' + (k === "ALTA" ? " alta" : "") + '">' + esc(V5.ETAPAS[k] || k) + '</span>' +
+          (V5.esHeredada(p) ? '<span class="chip her">Turno anterior' +
+            (V5.horasHospitalizada(p, state.turno.meta.fecha) != null ? " · " + V5.horasHospitalizada(p, state.turno.meta.fecha) + " h" : "") + '</span>' : "") +
           ((p.eventos || []).length ? '<span class="chip">' + p.eventos.length + ' eventos</span>' : "") + '</div></div>';
       }).join("");
       card.innerHTML = '<div class="head" data-toggle><div class="t">' + esc(V5.ETAPAS[k] || k) + '</div>' +
@@ -2789,6 +3289,8 @@
       (V5.lecturaCCA(o.cca) ? '<div id="obCCA" style="margin-top:5px;font-size:11.5px;line-height:1.35;color:' +
         (parseInt(o.cca, 10) >= 2 ? "#b8860b" : "var(--gris)") + '">' + esc(V5.lecturaCCA(o.cca)) + '</div>' : '<div id="obCCA"></div>') +
       '</div>');
+    // --- Procedencia: nueva de este turno o heredada (ya hospitalizada al recibir el turno)
+    pintarProcedencia(p);
     $$("#pacIdent [data-ob]").forEach(function (el) {
       el.addEventListener("change", function () {
         p.obst = p.obst || {};
@@ -2835,8 +3337,31 @@
       var k = c[0], lab = c[1], tipo = c[2], cond = c[3];
       if (cond) {
         if (typeof cond === "string") { if (d.curso !== cond && d.incidentes !== cond) return; }
+        else if (cond.v === "*") { if (!d[cond.k]) return; }   // solo si el campo ya trae valor
         else if (Array.isArray(cond.v)) { if (cond.v.indexOf(d[cond.k]) < 0) return; }
         else if (d[cond.k] !== cond.v) return;
+      }
+      // Separador de momento clínico: no es un campo, solo ordena la lectura
+      if (tipo === "paso") { h += '<div class="paso">' + esc(lab) + '</div>'; return; }
+      // Sugerencia de calculadoras del ámbito de esta etapa. Ninguna escala vive
+      // incrustada en el formulario: serían interminables. La calculadora es el
+      // brazo consultivo y se abre con el caso ya cargado.
+      if (tipo === "calc") {
+        var sug = V5.escalasSugeridas(e.tipo);
+        if (!sug.length) return;
+        // Plegada: trece botones sueltos son el ruido que este flujo quiere evitar.
+        // El rótulo nombra las ya resueltas en esta etapa; el resto está a un toque.
+        var hechas = sug.filter(function (s) {
+          var v = d[s.id] || (s.id === "bishop" || s.id === "mefi" ? d[s.id] : null);
+          return v && typeof v === "object" && Object.keys(v).length;
+        }).map(function (s) { return s.nombre; });
+        h += '<details class="score sugcalc"><summary>Herramientas de esta etapa' +
+          '<span class="res">' + esc(hechas.length ? hechas.join(" · ") : sug.length + " disponibles") + '</span></summary><div>' +
+          sug.map(function (s) {
+            return '<button class="btn sm ghost" data-sug="' + esc(s.id) + '">' + esc(s.nombre) + '</button>';
+          }).join("") +
+          '<div class="hint">Lo que resuelvas queda en la etapa de la paciente.</div></div></details>';
+        return;
       }
       h += '<div class="fld">';
       if (tipo === "area") h += '<label class="f">' + lab + '</label><textarea data-d="' + k + '">' + esc(d[k] || "") + '</textarea>';
@@ -2851,8 +3376,14 @@
         '<div style="display:flex;align-items:center;gap:8px">' +
         '<span style="font-weight:700;color:var(--azul);font-size:15px">Sala</span>' +
         '<input type="text" inputmode="numeric" data-d="' + k + '" value="' + at(d[k]) + '" style="flex:1" placeholder="N°"></div>';
-      else if (tipo.indexOf("lista:") === 0 || tipo.indexOf("listadet:") === 0)
-        h += '<label class="f">' + lab + '</label><div data-listaHost="' + k + '" data-cat2="' + tipo.split(":")[1] + '" data-det="' + (tipo.indexOf("listadet:") === 0 ? "1" : "") + '"></div>';
+      else if (tipo.indexOf("lista:") === 0 || tipo.indexOf("listadet:") === 0) {
+        // Las listas largas se pliegan una vez elegidas: abiertas estorban, cerradas
+        // resumen lo marcado. Al ingresar están vacías, así que nacen abiertas.
+        var marcado = V5.txtLista(d[k]);
+        h += '<details class="score"' + (marcado ? "" : " open") + '><summary>' + lab +
+             '<span class="res">' + esc(marcado || "sin marcar") + '</span></summary>' +
+             '<div data-listaHost="' + k + '" data-cat2="' + tipo.split(":")[1] + '" data-det="' + (tipo.indexOf("listadet:") === 0 ? "1" : "") + '"></div></details>';
+      }
       else if (tipo === "cama") {
         var uni = d.unidad || "", ck = uni === "ARO" ? "camasARO" : uni === "Ginecología" ? "camasGinecologia" : uni === "Puerperio" ? "camasPuerperio" : "";
         var lista = ck ? cat(ck) : [];
@@ -2881,6 +3412,9 @@
     cablearSelectsCatalogo(host);
     $$("#pacEtapa [data-camaedit]").forEach(function (b) {
       b.addEventListener("click", function () { abrirCatalogos(b.getAttribute("data-camaedit")); });
+    });
+    $$("#pacEtapa [data-sug]").forEach(function (b) {
+      b.addEventListener("click", function () { usarEscala(b.getAttribute("data-sug")); });
     });
     var selTE = $('#pacEtapa [data-d="tipoEstadia"]');
     if (selTE) selTE.addEventListener("change", function () {
@@ -2976,6 +3510,16 @@
     var id = host.getAttribute("data-escala");
     var def = V5.ESCALAS[id]; if (!def) return;
     var v = JSON.parse(host.getAttribute("data-val") || "{}");
+    // Bishop y MEFI tienen su propio componente: la calculadora lo reutiliza tal cual
+    if (def.render === "bishop" || def.render === "mefi") {
+      if (!$(".propio", host)) {
+        host.innerHTML = (def.nota ? '<div style="font-size:11px;color:var(--gris);line-height:1.4;margin-bottom:8px">' + esc(def.nota) + '</div>' : "") +
+          '<div class="propio"></div>';
+        var hp = $(".propio", host);
+        if (def.render === "bishop") pintarBishop(v, hp); else pintarMefi(v, hp);
+      }
+      return;
+    }
     var r = V5.evaluarEscala(id, v);
     var col = { rojo: "#c0392b", ambar: "#b8860b", verde: "#1e8e5a", gris: "#5f6368" }[r.nivel] || "#5f6368";
     var h = '<div class="lista">';
@@ -3004,14 +3548,29 @@
     }
     h += '<div style="margin-top:8px;padding:9px;border-radius:9px;background:#f4f6f9;text-align:center">' +
       '<div style="font-size:10.5px;color:var(--gris);text-transform:uppercase;letter-spacing:.4px">' + esc(def.nombre) + (def.subtitulo ? " · " + esc(def.subtitulo) : "") + '</div>' +
-      '<div style="font-size:12.5px;font-weight:600;color:' + col + ';margin-top:3px;line-height:1.35">' + esc(r.texto || "Marca los criterios presentes") + '</div></div></div>';
+      '<div data-resbox style="font-size:12.5px;font-weight:600;color:' + col + ';margin-top:3px;line-height:1.35">' + esc(r.texto || "Marca los criterios presentes") + '</div></div></div>';
     host.innerHTML = h;
-    resumenScore(id, r.texto ? (r.n != null ? String(r.n) + " · " : "") + (r.nivel === "rojo" ? "alterado" : r.nivel === "ambar" ? "límite" : r.nivel === "verde" ? "normal" : "") : "");
+    function rotulo(rr) {
+      return rr.texto ? (rr.n != null ? String(rr.n) + " · " : "") +
+        (rr.nivel === "rojo" ? "alterado" : rr.nivel === "ambar" ? "límite" : rr.nivel === "verde" ? "normal" : "") : "";
+    }
+    resumenScore(id, rotulo(r));
+    // Solo se repinta el resultado. Repintar todo el cuerpo en cada cambio
+    // destruía los campos y robaba el foco antes de terminar de escribir.
+    function refrescar() {
+      var vv = leerEscala(host);
+      host.setAttribute("data-val", JSON.stringify(vv));
+      var rr = V5.evaluarEscala(id, vv);
+      var box = $("[data-resbox]", host);
+      if (box) {
+        box.style.color = { rojo: "#c0392b", ambar: "#b8860b", verde: "#1e8e5a", gris: "#5f6368" }[rr.nivel] || "#5f6368";
+        box.textContent = rr.texto || "Marca los criterios presentes";
+      }
+      resumenScore(id, rotulo(rr));
+    }
     $$("[data-es]", host).forEach(function (el) {
-      el.addEventListener("change", function () {
-        host.setAttribute("data-val", JSON.stringify(leerEscala(host)));
-        pintarEscala(host);
-      });
+      el.addEventListener("input", refrescar);
+      el.addEventListener("change", refrescar);
     });
   }
   function resumenScore(clave, txt) {
@@ -3019,6 +3578,9 @@
     if (el) el.textContent = txt || "sin datos";
   }
   function leerEscala(host) {
+    var def = V5.ESCALAS[host.getAttribute("data-escala")] || {};
+    if (def.render === "bishop") return leerBishop($(".propio", host));
+    if (def.render === "mefi") return leerMefi($(".propio", host));
     var v = {};
     $$("[data-es]", host).forEach(function (e2) { v[e2.getAttribute("data-es")] = (e2.type === "checkbox") ? e2.checked : e2.value.trim(); });
     return v;
@@ -3044,6 +3606,13 @@
       '<button class="btn sm ghost" data-liedit style="margin-top:6px;width:100%;font-size:12px">Editar lista…</button></div>';
     $$("[data-li]", host).forEach(function (el) { el.addEventListener("change", function () { pintarLista(host, leerLista(host)); }); });
     $("[data-liedit]", host).addEventListener("click", function () { abrirCatalogos(clave); });
+    resumenLista(host, leerLista(host));
+  }
+  // El rótulo plegado muestra lo marcado, para no tener que abrir la lista para verlo
+  function resumenLista(host, sel) {
+    var det = host.closest ? host.closest("details.score") : null;
+    var sp = det ? $(".res", det) : null;
+    if (sp) sp.textContent = V5.txtLista(sel) || "sin marcar";
   }
   function leerLista(host) {
     var out = [];
@@ -3202,10 +3771,13 @@
   }
   function leerProcs() { return $$("#procsHost [data-proc]").filter(function (e) { return e.checked; }).map(function (e) { return e.value; }); }
 
-  var bishopSt = {};
-  function pintarBishop(b) {
-    bishopSt = JSON.parse(JSON.stringify(b || {}));
-    var O = DocxCore.BISHOP_OPC, host = $("#bishopHost");
+  // El estado vive en el propio contenedor: así el mismo componente sirve en la ficha
+  // de la paciente y en la calculadora, sin que uno pise al otro.
+  function pintarBishop(b, host) {
+    host = host || $("#bishopHost"); if (!host) return;
+    var bishopSt = JSON.parse(JSON.stringify(b || {}));
+    host._st = bishopSt;
+    var O = DocxCore.BISHOP_OPC;
     function s(k, lab, opts) {
       return '<div><label class="f">' + lab + '</label><select data-bi="' + k + '"><option value=""></option>' +
         opts.map(function (o) { return '<option' + (bishopSt[k] === o ? " selected" : "") + '>' + o + '</option>'; }).join("") + '</select></div>';
@@ -3222,15 +3794,21 @@
       '<div style="font-size:11.5px;color:var(--gris)">Score de Bishop</div>' +
       '<div style="font-size:21px;font-weight:800;color:' + col + '">' + (sc == null ? "—" : sc + " / 13") + '</div>' +
       '<div style="font-size:12px;color:' + col + ';font-weight:600">' + (DocxCore.bishopInterpretacion(sc, ctx) || "Completa los campos") + '</div></div>';
-    resumenScore("bishop", DocxCore.fmtBishopCompacto({ bishop: bishopSt }));
-    $$("#bishopHost [data-bi]").forEach(function (el) { el.addEventListener("change", function () { pintarBishop(leerBishop()); }); });
+    if (host.id === "bishopHost") resumenScore("bishop", DocxCore.fmtBishopCompacto({ bishop: bishopSt }));
+    $$("[data-bi]", host).forEach(function (el) { el.addEventListener("change", function () { pintarBishop(leerBishop(host), host); }); });
   }
-  function leerBishop() { var b = JSON.parse(JSON.stringify(bishopSt || {})); $$("#bishopHost [data-bi]").forEach(function (e) { b[e.getAttribute("data-bi")] = e.value; }); return b; }
+  function leerBishop(host) {
+    host = host || $("#bishopHost"); if (!host) return {};
+    var b = JSON.parse(JSON.stringify(host._st || {}));
+    $$("[data-bi]", host).forEach(function (e) { b[e.getAttribute("data-bi")] = e.value; });
+    return b;
+  }
 
-  var mefiSt = {};
-  function pintarMefi(m) {
-    mefiSt = JSON.parse(JSON.stringify(m || {}));
-    var O = DocxCore.MEFI_OPC, host = $("#mefiHost");
+  function pintarMefi(m, host) {
+    host = host || $("#mefiHost"); if (!host) return;
+    var mefiSt = JSON.parse(JSON.stringify(m || {}));
+    host._st = mefiSt;
+    var O = DocxCore.MEFI_OPC;
     function s(k, lab) {
       return '<div><label class="f">' + lab + '</label><select data-me="' + k + '"><option value=""></option>' +
         O[k].map(function (o) { return '<option' + (mefiSt[k] === o ? " selected" : "") + '>' + o + '</option>'; }).join("") + '</select></div>';
@@ -3242,11 +3820,17 @@
       '<div style="margin-top:8px">' + s("desaceleraciones", "Desaceleraciones") + '</div>' +
       '<div style="margin-top:10px;padding:10px;border-radius:10px;background:#f4f6f9;text-align:center">' +
       '<div style="font-size:11.5px;color:var(--gris)">Clasificación MEFI</div>' +
-      '<div style="font-size:21px;font-weight:800;color:' + col + '">' + (cat2 ? "Categoría " + ["", "I", "II", "III"][cat2] : "—") + '</div></div>';
-    resumenScore("mefi", DocxCore.fmtMefiCompacto({ mefi: mefiSt }));
-    $$("#mefiHost [data-me]").forEach(function (el) { el.addEventListener("change", function () { pintarMefi(leerMefi()); }); });
+      '<div style="font-size:21px;font-weight:800;color:' + col + '">' + (cat2 ? "Categoría " + ["", "I", "II", "III"][cat2] : "—") + '</div>' +
+      (cat2 ? '<div style="font-size:11.5px;color:' + col + ';font-weight:600;margin-top:3px;line-height:1.35">' + esc(DocxCore.mefiTexto(cat2).replace(/^Categoría [IV]+ — /, "")) + '</div>' : "") + '</div>';
+    if (host.id === "mefiHost") resumenScore("mefi", DocxCore.fmtMefiCompacto({ mefi: mefiSt }));
+    $$("[data-me]", host).forEach(function (el) { el.addEventListener("change", function () { pintarMefi(leerMefi(host), host); }); });
   }
-  function leerMefi() { var m = JSON.parse(JSON.stringify(mefiSt || {})); $$("#mefiHost [data-me]").forEach(function (e) { m[e.getAttribute("data-me")] = e.value; }); return m; }
+  function leerMefi(host) {
+    host = host || $("#mefiHost"); if (!host) return {};
+    var m = JSON.parse(JSON.stringify(host._st || {}));
+    $$("[data-me]", host).forEach(function (e) { m[e.getAttribute("data-me")] = e.value; });
+    return m;
+  }
 
   var rnSt = null;
   function rnVacio() { return { vitalidad: "Vivo", madurez: "Término", semanas: "", sexo: "ND", peso: "", apgar: "", destino: "Con su madre", obs: "" }; }
@@ -3283,6 +3867,48 @@
     return r;
   }
 
+  /* ---------- procedencia: nueva del turno vs. heredada ----------
+     La heredada ya estaba hospitalizada cuando recibimos el turno: su manejo viene
+     establecido y el reloj de hospitalización corre desde antes. No es un ingreso nuestro. */
+  function ayerISO() { var d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
+  function pintarProcedencia(p) {
+    var her = !!p.heredada, h = p.heredada || {};
+    var hrs = her ? V5.horasHospitalizada(p, state.turno.meta.fecha) : null;
+    var col = (hrs != null && hrs >= 24) ? "#c0392b" : (hrs != null && hrs >= 12) ? "#b8860b" : "var(--gris)";
+    var html = '<div id="pacProc" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--linea)">' +
+      '<label class="f" style="color:var(--azul);font-size:12px">Procedencia</label>' +
+      '<div class="row2" style="margin-top:2px">' +
+      '<button class="btn sm ' + (her ? "ghost" : "pri") + '" data-proc="nueva" style="flex:1">Ingreso de este turno</button>' +
+      '<button class="btn sm ' + (her ? "pri" : "ghost") + '" data-proc="her" style="flex:1">Del turno anterior</button></div>';
+    if (her) {
+      html += '<div class="row" style="margin-top:9px">' +
+        '<div><label class="f">Hospitalizada desde</label><input type="date" data-her="desde" value="' + at(h.desde || ayerISO()) + '"></div>' +
+        '<div class="short"><label class="f">Hora</label><input type="time" data-her="hora" value="' + at(h.hora || "") + '"></div></div>' +
+        '<div style="margin-top:7px;font-size:11.5px;line-height:1.4;color:' + col + ';font-weight:600">' +
+        (hrs != null ? hrs + " h hospitalizada al momento de recibir el turno." : "Indica desde cuándo está hospitalizada.") +
+        '</div>' +
+        '<div class="hint" style="margin-top:4px">No cuenta como ingreso de este turno. Se entrega con su ubicación, diagnósticos y el manejo que ya viene establecido.</div>';
+    }
+    html += '</div>';
+    var prev = $("#pacProc"); if (prev) prev.remove();
+    $("#pacIdent").insertAdjacentHTML("beforeend", html);
+    $$('#pacProc [data-proc]').forEach(function (b) {
+      b.addEventListener("click", function () {
+        var modo = b.getAttribute("data-proc");
+        if (modo === "her" && !p.heredada) p.heredada = { desde: ayerISO(), hora: "" };
+        if (modo === "nueva" && p.heredada) delete p.heredada;
+        guardarPronto(); pintarProcedencia(p); pintarMain();
+      });
+    });
+    $$('#pacProc [data-her]').forEach(function (e) {
+      e.addEventListener("change", function () {
+        p.heredada = p.heredada || {};
+        p.heredada[e.getAttribute("data-her")] = e.value;
+        guardarPronto(); pintarProcedencia(p);
+      });
+    });
+  }
+
   /* ---------- hoja modal ---------- */
   var sheetOk = null;
   function hoja(titulo, cuerpoHTML, onOk) {
@@ -3304,12 +3930,25 @@
 
   /* ---------- acciones de paciente ---------- */
   $("#btnNueva").addEventListener("click", function () {
-    var p = V5.nuevaPaciente();
-    state.turno.pacientes.push(p);
-    state.pacIdx = state.turno.pacientes.length - 1;
-    guardarPronto();
-    abrirPaciente(state.pacIdx);
-    setTimeout(function () { elegirEtapa(true); }, 80);
+    hoja("Nueva paciente",
+      '<button class="opt" data-np="nueva">Ingresa en este turno<div style="font-size:11px;color:var(--gris);font-weight:400;margin-top:2px">Llega por box, SOGO o derivación. Cuenta como ingreso del turno.</div></button>' +
+      '<button class="opt" data-np="her">Ya estaba hospitalizada<div style="font-size:11px;color:var(--gris);font-weight:400;margin-top:2px">Recibida del turno anterior, con manejo establecido. No cuenta como ingreso.</div></button>' +
+      '<div class="row" style="margin-top:10px" id="npHer">' +
+      '<div><label class="f">Hospitalizada desde</label><input type="date" id="npDesde" value="' + ayerISO() + '"></div>' +
+      '<div class="short"><label class="f">Hora</label><input type="time" id="npHora"></div></div>' +
+      '<div class="hint">La fecha y hora solo se usan si eliges "ya estaba hospitalizada".</div>', null);
+    $$("#sheetBody [data-np]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var modo = b.getAttribute("data-np");
+        var p = V5.nuevaPaciente();
+        if (modo === "her") p.heredada = { desde: $("#npDesde").value || ayerISO(), hora: $("#npHora").value || "" };
+        state.turno.pacientes.push(p);
+        state.pacIdx = state.turno.pacientes.length - 1;
+        guardarPronto(); cerrarHoja();
+        abrirPaciente(state.pacIdx);
+        setTimeout(function () { elegirEtapa(true, modo === "her"); }, 80);
+      });
+    });
   });
   // Opciones contextuales: qué ofrecer según de dónde viene la paciente
   var PROPIA = { PREPARTO: 1, PARTO: 1, PABELLON: 1, SALA: 1, OBSERVACION: 1 };
@@ -3324,35 +3963,110 @@
       if (t === "OTRO_SERVICIO" && origen === "INICIO") d.tipoEstadia = "Interconsulta (paciente de otro servicio)";
       return { dest: t, txt: V5.ETAPAS[t] || t, datos: d };
     });
+    // Tras una cesárea hay que registrar el nacimiento: sin este destino la cesárea
+    // no llegaba a la sección Nacimientos ni a los recuentos del turno.
+    if (origen === "PABELLON") {
+      var pB = state.turno.pacientes[state.pacIdx];
+      var dPab = (V5.etapaActual(pB) || {}).datos || {};
+      if (/^obst/i.test(dPab.rama || "") && !V5.tuvoEtapa(pB, "PARTO")) {
+        base = [{ dest: "PARTO", txt: "Registrar el nacimiento",
+                  datos: { tipoParto: /ces/i.test(dPab.rama) ? "Cesárea" : "",
+                           diagnostico: dPab.dxPre || "",
+                           incidentes: dPab.curso || "" } }]
+               .concat(base.filter(function (x) { return x.dest !== "PARTO"; }));
+      } else {
+        base = base.filter(function (x) { return x.dest !== "PARTO"; });
+      }
+    }
+    // Desenlaces con nombre clínico: el mismo patrón de Preparto, para que el destino
+    // se lea como una decisión y no como un cambio de casilla.
+    if (origen === "OBSERVACION") {
+      var pO = state.turno.pacientes[state.pacIdx];
+      var eO = [
+        { dest: "ALTA", txt: "Alta a domicilio desde SOGO", datos: {} },
+        { dest: "PREPARTO", txt: "Ingresa a Preparto", datos: { origen: "SOGO — indicación médica" } },
+        { dest: "PABELLON", txt: "Pabellón de urgencia", datos: { origen: "SOGO", caracter: "Inmediata" } },
+        { dest: "SALA", txt: "Hospitaliza en sala", datos: {} }
+      ];
+      if (pO && V5.esDeOtroServicio(pO)) eO.push({ dest: "OTRO_SERVICIO", txt: "Devolver a su servicio", datos: { tipoEstadia: "Regreso a su servicio tras cirugía" } });
+      else eO.push({ dest: "OTRO_SERVICIO", txt: "Traslado a otro servicio o centro", datos: { tipoEstadia: "Traslado (paciente nuestra)" } });
+      base = eO;
+    }
+    if (origen === "SALA") {
+      var pS = state.turno.pacientes[state.pacIdx];
+      var uS = ((V5.etapaActual(pS) || {}).datos || {}).unidad || "";
+      var eS = [
+        { dest: "ALTA", txt: "Alta con control en policlínico", datos: {} },
+        { dest: "PABELLON", txt: "Pabellón — reintervención",
+          datos: { caracter: "Inmediata", origen: uS === "ARO" ? "Sala ARO" : uS === "Puerperio" ? "Sala Puerperio" : uS === "Ginecología" ? "Sala Ginecología" : "" } },
+        { dest: "OTRO_SERVICIO", txt: "Unidad crítica (UCI/UTI) — traslado", datos: { tipoEstadia: "Traslado (paciente nuestra)" } }
+      ];
+      if (pS && V5.esDeOtroServicio(pS)) eS.push({ dest: "OTRO_SERVICIO", txt: "Devolver a su servicio tras la cirugía", datos: { tipoEstadia: "Regreso a su servicio tras cirugía" } });
+      base = eS;
+    }
+    if (origen === "PABELLON") {
+      // La consulta intraoperatoria devuelve a la paciente a su equipo, no la hospitaliza con nosotros
+      var dP2 = (V5.etapaActual(state.turno.pacientes[state.pacIdx]) || {}).datos || {};
+      if (/^Consulta intraoperatoria/.test(dP2.origen || "")) {
+        base = [{ dest: "OTRO_SERVICIO", txt: "Devolver a su servicio tras la cirugía",
+                  datos: { tipoEstadia: "Regreso a su servicio tras cirugía" } }]
+               .concat(base.filter(function (x) { return x.dest !== "OTRO_SERVICIO"; }));
+      }
+    }
     if (origen === "PREPARTO" || origen === "PARTO") {
       var esp = [];
       if (origen === "PREPARTO") {
         esp.push({ dest: "PARTO", txt: "Parto — sin incidentes", datos: { incidentes: "Sin incidentes" }, luego: "SALA_PUERPERIO" });
         esp.push({ dest: "PARTO", txt: "Parto — con incidentes", datos: { incidentes: "Con incidentes" } });
         esp.push({ dest: "PABELLON", txt: "Pabellón — cesárea de urgencia", datos: { rama: "Obstétrica — cesárea" } });
+        // Sale de Preparto sin parto ni cesárea: no cumple criterios para estar ahí
+        esp.push({ dest: "SALA", txt: "Devuelta a ARO — no cumple criterios de Preparto",
+                   datos: { unidad: "ARO", retorno: "No cumple criterios de ingreso a Preparto" } });
       }
-      esp.push({ dest: "PABELLON", txt: "Pabellón — complicación del parto o puerperio", datos: { rama: "Obstétrica — complicación del parto" } });
+      // El puerperio y sus complicaciones solo existen DESPUÉS del parto: ofrecerlos
+      // desde Preparto es ruido sobre una paciente que todavía no ha parido.
+      if (origen === "PARTO") {
+        esp.push({ dest: "PABELLON", txt: "Pabellón — complicación del parto o puerperio", datos: { rama: "Obstétrica — complicación del parto" } });
+      }
       var pA = state.turno.pacientes[state.pacIdx];
       if (pA && V5.esDeOtroServicio(pA)) esp.push({ dest: "OTRO_SERVICIO", txt: "Devolver a su servicio tras la cirugía", datos: { tipoEstadia: "Regreso a su servicio tras cirugía" } });
       else esp.push({ dest: "OTRO_SERVICIO", txt: "Unidad crítica (UCI/UTI) — traslado", datos: { tipoEstadia: "Traslado (paciente nuestra)" } });
-      esp.push({ dest: "SALA", txt: "Sala — puerperio", datos: { unidad: "Puerperio" } });
+      if (origen === "PARTO") esp.push({ dest: "SALA", txt: "Sala — puerperio", datos: { unidad: "Puerperio" } });
       base = esp.concat(base.filter(function (b) { return b.dest !== "PARTO" && b.dest !== "PABELLON" && b.dest !== "SALA" && b.dest !== "OTRO_SERVICIO"; }));
     }
     return base;
   }
-  function elegirEtapa(inicial) {
+  // La heredada no "ingresa": se la recibe donde ya está. Sin peritaje ni alta de entrada.
+  var UBIC_HEREDADA = ["PREPARTO", "SALA", "OBSERVACION", "OTRO_SERVICIO", "PABELLON"];
+  function elegirEtapa(inicial, heredada) {
     var p = state.turno.pacientes[state.pacIdx];
     var origen = inicial ? "INICIO" : V5.tipoActual(p);
+    // Los destinos se calculan sobre lo que hay escrito EN PANTALLA. Sin esto, una
+    // cesárea tecleada a mano no ofrecía registrar el nacimiento: el modelo todavía
+    // no sabía que la rama era obstétrica.
+    if (!inicial && $("#scrPac").classList.contains("on")) { try { leerPaciente(); } catch (e2) {} }
     var ops = opcionesDestino(origen);
+    if (inicial && heredada) {
+      ops = UBIC_HEREDADA.map(function (t) {
+        var d = {};
+        if (t === "OTRO_SERVICIO") d.tipoEstadia = "Interconsulta (paciente de otro servicio)";
+        return { dest: t, txt: V5.ETAPAS[t] || t, datos: d };
+      });
+    }
     if (!ops.length) { aviso("Sin destinos", "Esta paciente ya está cerrada (alta)."); return; }
     var cuerpo = ops.map(function (o, i) { return '<button class="opt" data-op="' + i + '">' + esc(o.txt) + '</button>'; }).join("") +
-      '<div class="fld" style="margin-top:10px"><label class="f">Hora</label><input type="time" id="hEtapa" value="' + ahoraHHMM() + '"></div>';
-    hoja(inicial ? "¿Dónde ingresa la paciente?" : "Siguiente etapa", cuerpo, null);
+      '<div class="fld" style="margin-top:10px"><label class="f">Hora</label><input type="time" id="hEtapa" value="' + ahoraHHMM() + '"></div>' +
+      (inicial && heredada ? '<div class="hint">Hora en que la recibes, no la de su ingreso original.</div>' : "");
+    hoja(inicial ? (heredada ? "¿Dónde está la paciente ahora?" : "¿Dónde ingresa la paciente?") : "Siguiente etapa", cuerpo, null);
     $$("#sheetBody [data-op]").forEach(function (b) {
       b.addEventListener("click", function () {
         var o = ops[Number(b.getAttribute("data-op"))], hora = $("#hEtapa").value || ahoraHHMM();
         leerPaciente();
         V5.agregarEtapa(p, o.dest, JSON.parse(JSON.stringify(o.datos || {})), hora);
+        if (inicial && heredada) {
+          p.eventos = (p.eventos || []).filter(function (e) { return e.tipo !== "Traslado"; });
+          V5.agregarEvento(p, hora, "Traslado", "Recibida del turno anterior en " + (V5.ETAPAS[o.dest] || o.dest));
+        }
         guardarPronto(); cerrarHoja(); abrirPaciente(state.pacIdx); pintarMain();
         if (o.luego === "SALA_PUERPERIO") {
           setTimeout(function () {
@@ -3549,22 +4263,131 @@
     a.href = u; a.download = nm; document.body.appendChild(a); a.click();
     setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 1200);
   }
+  /* El PC de la residencia no recibe archivos del teléfono: el puente es el correo
+     del servicio, que ya está abierto en esa máquina. Se mandan los dos formatos de
+     la hoja para que allá funcione la ruta que funcione:
+       · .xlsx  -> Archivo > Importar > Subir > Insertar hoja(s) nueva(s)
+       · .html  -> se abre en Chrome, botón "Copiar la tabla", y se pega en la pestaña  */
+  function hojaOficialHtml(t) {
+    var G = XlsxCore.grillaOficial(t), nom = XlsxCore.nombreHojaOficial(t.meta && t.meta.fecha);
+    var ANCHOS = [80, 199, 93, 93, 93];
+    var filas = G.map(function (f) {
+      var col = 0;
+      return "<tr>" + f.celdas.map(function (c) {
+        var firma = (f.tipo === "firmaNombre" || f.tipo === "firmaRotulo");
+        var sinCaja = f.tipo === "vacio" || (firma && (col === 0 || col === 2 || col === 4));
+        var fondo = f.tipo === "titulo" ? "#D8D8D8" : f.tipo === "seccion" ? "#D9D9D9" : f.tipo === "cabecera" ? "#F2F2F2" : "#ffffff";
+        var neg = (f.tipo !== "dato") ? "bold" : "normal";
+        var cen = (f.tipo === "titulo" || f.tipo === "seccion" || f.tipo === "cabecera" || firma || col === 0) ? "center" : "left";
+        var tam = f.tipo === "titulo" ? "13pt" : f.tipo === "seccion" ? "12pt" : f.tipo === "cabecera" ? "8pt" :
+                  (f.tipo === "meta" || firma) ? "10pt" : "8pt";
+        var borde = sinCaja ? "none" : "1px solid #000";
+        col += (c.span || 1);
+        return '<td colspan="' + (c.span || 1) + '" style="border:' + borde + ';background:' + fondo +
+               ';font-weight:' + neg + ';text-align:' + cen + ';font-size:' + tam +
+               ';vertical-align:top;padding:2px 4px;height:17px;font-family:Arial,sans-serif">' + esc(c.v || "") + '</td>';
+      }).join("") + "</tr>";
+    }).join("");
+    return '<!doctype html><html lang="es"><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>Entrega de Turno ' + esc(nom) + '</title></head>' +
+      '<body style="font-family:Arial,Helvetica,sans-serif;margin:16px;background:#f6f7f9">' +
+      '<div style="max-width:980px;margin:0 auto">' +
+      '<h1 style="font-size:17px;color:#1A4D8F;margin:0 0 4px">Entrega de Turno — pestaña ' + esc(nom) + '</h1>' +
+      '<ol style="font-size:13px;color:#444;line-height:1.5;margin:0 0 10px 18px;padding:0">' +
+      '<li>Pulsa <b>Copiar la tabla</b>.</li>' +
+      '<li>En el libro del servicio, crea la pestaña <b>' + esc(nom) + '</b>.</li>' +
+      '<li>Clic en <b>A1</b> y pega (Ctrl+V).</li></ol>' +
+      '<button id="cp" style="font-size:15px;padding:10px 18px;border:0;border-radius:9px;background:#1A4D8F;color:#fff;font-weight:700;cursor:pointer">Copiar la tabla</button>' +
+      '<span id="ok" style="margin-left:10px;font-size:13px;color:#1e8e5a;font-weight:700"></span>' +
+      '<div style="overflow-x:auto;margin-top:12px;background:#fff;padding:10px;border-radius:9px">' +
+      '<table id="t" cellspacing="0" cellpadding="0" style="border-collapse:collapse"><colgroup>' +
+      ANCHOS.map(function (w) { return '<col style="width:' + w + 'px">'; }).join("") + '</colgroup>' +
+      filas + '</table></div></div>' +
+      '<script>document.getElementById("cp").onclick=function(){' +
+      'var r=document.createRange();r.selectNode(document.getElementById("t"));' +
+      'var s=window.getSelection();s.removeAllRanges();s.addRange(r);' +
+      'var k=false;try{k=document.execCommand("copy")}catch(e){}' +
+      's.removeAllRanges();' +
+      'document.getElementById("ok").textContent=k?"Copiado. Pega en A1 de la pestaña nueva.":"No se pudo copiar: selecciona la tabla a mano y usa Ctrl+C.";' +
+      '};<\/script></body></html>';
+  }
   function enviar(t) {
+    var sec = seccionesDe(t);
+    var nomHoja = XlsxCore.nombreHojaOficial(t.meta && t.meta.fecha ? t.meta.fecha : hoyISO());
     var fs = [new File([docxBlob(t)], nombre(t, "docx"), { type: MIME_DOCX }),
-              new File([xlsxBlob(t)], nombre(t, "xlsx"), { type: MIME_XLSX })];
+              new File([new Blob([XlsxCore.buildXlsxOficial(sec)], { type: MIME_XLSX })], nomHoja + ".xlsx", { type: MIME_XLSX }),
+              new File([new Blob([hojaOficialHtml(sec)], { type: "text/html" })], nomHoja + ".html", { type: "text/html" })];
     if (navigator.canShare && navigator.canShare({ files: fs })) navigator.share({ files: fs, title: nombre(t, "") }).catch(function () {});
-    else { bajar(docxBlob(t), nombre(t, "docx")); setTimeout(function () { bajar(xlsxBlob(t), nombre(t, "xlsx")); }, 700); }
+    else fs.forEach(function (f, i) { setTimeout(function () { bajar(f, f.name); }, i * 700); });
   }
   var pvKind = "word";
   $("#btnWord").addEventListener("click", function () { preview("word"); });
   $("#btnExcel").addEventListener("click", function () { preview("excel"); });
+  var pvExcel = "oficial";   // "oficial" = hoja para el libro del servicio · "completo" = registro extendido
   function preview(kind) {
     pvKind = kind;
     var sec = seccionesDe(state.turno);
-    $("#pvTitle").textContent = kind === "word" ? "Vista previa — Informe ejecutivo" : "Vista previa — Registro oficial";
-    $("#pvDownload").textContent = kind === "word" ? "Descargar Word" : "Descargar Excel";
-    $("#previewBody").innerHTML = kind === "word" ? DocxCore.buildInformeHtml(sec) : registroHtml(sec);
+    if (kind === "word") {
+      $("#pvTitle").textContent = "Vista previa — Informe ejecutivo";
+      $("#pvDownload").textContent = "Descargar Word";
+      $("#previewBody").innerHTML = DocxCore.buildInformeHtml(sec);
+    } else {
+      $("#pvTitle").textContent = "Vista previa — Planilla del servicio";
+      $("#pvDownload").textContent = "Descargar Excel";
+      $("#previewBody").innerHTML =
+        '<div class="row2" style="margin-bottom:10px">' +
+        '<button class="btn sm ' + (pvExcel === "oficial" ? "pri" : "ghost") + '" data-xl="oficial" style="flex:1">Hoja del servicio</button>' +
+        '<button class="btn sm ' + (pvExcel === "completo" ? "pri" : "ghost") + '" data-xl="completo" style="flex:1">Registro completo</button>' +
+        '</div>' +
+        (pvExcel === "oficial"
+          ? '<div class="hint" style="margin-top:0">Pestaña <b>' + esc(XlsxCore.nombreHojaOficial(state.turno.meta.fecha || hoyISO())) +
+            '</b> para el libro mensual de la residencia. En el PC: <b>Archivo → Importar → Subir → Insertar hoja(s) nueva(s)</b>.</div>' +
+            '<button class="btn sm ghost" id="pvCopiar" style="width:100%;margin:8px 0">Copiar para pegar en Sheets</button>' +
+            oficialHtml(sec)
+          : registroHtml(sec));
+      $$("#previewBody [data-xl]").forEach(function (b2) {
+        b2.addEventListener("click", function () { pvExcel = b2.getAttribute("data-xl"); preview("excel"); });
+      });
+      if ($("#pvCopiar")) $("#pvCopiar").addEventListener("click", function () { copiarGrilla(sec); });
+    }
     ver("#scrPreview");
+  }
+  // Vista de la hoja oficial: misma geometría que el libro del servicio
+  function oficialHtml(t) {
+    var g = XlsxCore.grillaOficial(t);
+    var h = '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-family:\'Helvetica Neue\',Arial,sans-serif;font-size:10px;background:#fff;min-width:560px">';
+    g.forEach(function (f) {
+      h += '<tr>' + f.celdas.map(function (c) {
+        var fondo = f.tipo === "titulo" ? "#C9D1C9" : f.tipo === "seccion" ? "#CDD6D9" : f.tipo === "cabecera" ? "#EFEFEF" : "#fff";
+        var peso = (f.tipo === "dato") ? "400" : "700";
+        return '<td colspan="' + (c.span || 1) + '" style="border:1px solid #777;padding:3px 4px;background:' + fondo +
+               ';font-weight:' + peso + ';vertical-align:top;' + (f.tipo === "titulo" || f.tipo === "seccion" || f.tipo === "cabecera" ? "text-align:center;" : "") + '">' +
+               esc(c.v || "") + '</td>';
+      }).join("") + '</tr>';
+    });
+    return h + '</table></div>';
+  }
+  function copiarGrilla(sec) {
+    var g = XlsxCore.grillaOficial(sec);
+    var tsv = g.map(function (f) {
+      var fila = [];
+      f.celdas.forEach(function (c) { fila.push(String(c.v == null ? "" : c.v).replace(/[\t\n]/g, " ")); for (var k = 1; k < (c.span || 1); k++) fila.push(""); });
+      return fila.join("\t");
+    }).join("\n");
+    function ok() {
+      aviso("Copiado", "La grilla quedó en el portapapeles.<br><br>En el PC: duplica la pestaña del día anterior, renómbrala <b>" +
+        esc(XlsxCore.nombreHojaOficial(state.turno.meta.fecha || hoyISO())) + "</b>, haz clic en <b>A1</b> y pega.<br><br>" +
+        '<span style="font-size:11px;color:var(--gris)">Si Sheets avisa por las celdas combinadas, usa mejor la ruta de importar el archivo.</span>');
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(tsv).then(ok, function () { copiaManual(tsv); });
+    } else copiaManual(tsv);
+  }
+  function copiaManual(tsv) {
+    hoja("Copiar manualmente", '<p class="hint">El navegador no dejó copiar solo. Mantén pulsado el texto, selecciona todo y copia.</p>' +
+      '<textarea id="cpTxt" style="height:180px;font-size:11px"></textarea>', null);
+    $("#cpTxt").value = tsv; $("#cpTxt").focus();
   }
   function registroHtml(t) {
     var defs = [["I. Preparto", t.partoIntegral], ["II. Observación", t.observacion], ["III. Otras unidades", t.otrasUnidades],
@@ -3581,7 +4404,14 @@
     });
     return h + '</div>';
   }
-  $("#pvDownload").addEventListener("click", function () { pvKind === "word" ? bajar(docxBlob(state.turno), nombre(state.turno, "docx")) : bajar(xlsxBlob(state.turno), nombre(state.turno, "xlsx")); });
+  $("#pvDownload").addEventListener("click", function () {
+    if (pvKind === "word") return bajar(docxBlob(state.turno), nombre(state.turno, "docx"));
+    if (pvExcel === "oficial") {
+      var n = XlsxCore.nombreHojaOficial(state.turno.meta.fecha || hoyISO());
+      return bajar(new Blob([XlsxCore.buildXlsxOficial(seccionesDe(state.turno))], { type: MIME_XLSX }), n + ".xlsx");
+    }
+    bajar(xlsxBlob(state.turno), nombre(state.turno, "xlsx"));
+  });
   $("#pvSend").addEventListener("click", function () { enviar(state.turno); });
   $("#pvBack").addEventListener("click", function () { ver("#scrMain"); });
   $("#btnEnviar").addEventListener("click", function () { enviar(state.turno); });
@@ -3619,6 +4449,10 @@
       q.etapas = [JSON.parse(JSON.stringify(V5.etapaActual(p)))];
       q.eventos = [];
       q.recibida = dmy(snap.meta.fecha);
+      // Ya estaba hospitalizada: su ingreso pertenece al turno que la admitió, no al nuevo.
+      // Si venía heredada, conserva su fecha original de hospitalización.
+      q.heredada = p.heredada ? JSON.parse(JSON.stringify(p.heredada))
+                              : { desde: snap.meta.fecha || "", hora: ((p.etapas || [])[0] || {}).hora || "", auto: true };
       V5.agregarEvento(q, ahoraHHMM(), "Traslado", "Recibida del turno del " + dmy(snap.meta.fecha));
       nuevo.pacientes.push(q); arrastradas++;
     });
@@ -3890,16 +4724,31 @@
       var e = V5.ESCALAS[k];
       return (e.nombre + " " + (e.subtitulo || "") + " " + (e.categoria || "")).toLowerCase().indexOf(q) >= 0;
     });
+    // Anidamiento al caso: con una paciente abierta, primero lo que aplica a su etapa
+    var pAb = pacienteAbierta(), etAb = pAb ? V5.tipoActual(pAb) : null;
+    function pertinente(k) {
+      var am = V5.ESCALAS[k].ambito;
+      return !!(etAb && am && am.indexOf(etAb) >= 0);
+    }
     ids.sort(function (a, b) {
+      var pa = pertinente(a) ? 0 : 1, pb = pertinente(b) ? 0 : 1;
+      if (pa !== pb) return pa - pb;
       var fa = favs.indexOf(a) >= 0 ? 0 : 1, fb = favs.indexOf(b) >= 0 ? 0 : 1;
       if (fa !== fb) return fa - fb;
       return (V5.ESCALAS[a].categoria || "") .localeCompare(V5.ESCALAS[b].categoria || "");
     });
-    var cuerpo = '<input type="text" id="calcQ" placeholder="Buscar escala, score o clasificación…" value="' + at(filtro) + '" style="margin-bottom:10px">';
-    var catAct = null;
+    var cuerpo = (pAb ? '<div class="hint" style="margin:0 0 8px">Caso abierto: <b>' + esc(pAb.ident.nombre || "sin nombre") + '</b>' +
+                        (etAb ? ' en ' + esc(V5.ETAPAS[etAb] || etAb) : "") +
+                        '. Lo que insertes queda en su ficha.</div>' : "") +
+      '<input type="text" id="calcQ" placeholder="Buscar escala, score o clasificación…" value="' + at(filtro) + '" style="margin-bottom:10px">';
+    var catAct = null, pertHdr = false;
     ids.forEach(function (k) {
       var e = V5.ESCALAS[k], esFav = favs.indexOf(k) >= 0;
-      if (!q && e.categoria !== catAct) { catAct = e.categoria; cuerpo += '<div class="catTag">' + esc(catAct || "Otras") + '</div>'; }
+      if (!q) {
+        if (pertinente(k)) {
+          if (!pertHdr) { pertHdr = true; cuerpo += '<div class="catTag">Para ' + esc(V5.ETAPAS[etAb] || etAb) + '</div>'; }
+        } else if (e.categoria !== catAct) { catAct = e.categoria; cuerpo += '<div class="catTag">' + esc(catAct || "Otras") + '</div>'; }
+      }
       cuerpo += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">' +
         '<button class="opt" data-calc="' + k + '" style="margin:0;flex:1">' + esc(e.nombre) +
         (e.subtitulo ? '<div style="font-size:11px;color:var(--gris);font-weight:400;margin-top:2px">' + esc(e.subtitulo) + '</div>' : "") + '</button>' +
@@ -3936,23 +4785,62 @@
       state.turno.catalogos.escalasOcultas = o; kvSet("v5_catalogos", state.turno.catalogos); abrirCalculadora(filtro);
     }); });
   }
+  // La calculadora sirve a los dos usos que pide la práctica:
+  //  · ANIDADA al caso abierto: parte de los datos ya registrados de esa paciente y,
+  //    al insertar, el resultado queda en su etapa (columna del Word/Excel) y en su cronología.
+  //  · AGNÓSTICA: sin paciente abierta funciona igual, solo entrega el resultado en pantalla.
+  function pacienteAbierta() {
+    var p = (state.pacIdx >= 0 && state.turno.pacientes[state.pacIdx]) ? state.turno.pacientes[state.pacIdx] : null;
+    // la calculadora debe ver lo que hay escrito en la ficha, no la última versión guardada
+    if (p && $("#scrPac") && $("#scrPac").classList.contains("on")) { try { leerPaciente(); } catch (e) {} }
+    return p;
+  }
+  function precargaEscala(id, p) {
+    var def = V5.ESCALAS[id] || {};
+    if (!p || !def.render) return {};
+    var d = (V5.etapaActual(p) || {}).datos || {};
+    var v = JSON.parse(JSON.stringify((def.render === "bishop" ? d.bishop : d.mefi) || {}));
+    if (def.render === "bishop" && !v.contexto) {
+      var eg = parseFloat((p.obst || {}).egSem);
+      if (!isNaN(eg)) v.contexto = eg >= 37 ? "Término" : "Pretérmino";
+    }
+    return v;
+  }
   function usarEscala(id) {
     var def = V5.ESCALAS[id];
-    hoja(def.nombre, '<div data-escala="' + id + '" data-val="{}"></div>' +
-      '<button class="btn pri" id="calcIns" style="width:100%;margin-top:10px">Insertar en la paciente abierta</button>' +
+    var p = pacienteAbierta();
+    var pre = precargaEscala(id, p);
+    var nom = p ? (p.ident.nombre || "la paciente abierta") : "";
+    hoja(def.nombre,
+      (p ? '<div class="hint" style="margin-top:0;margin-bottom:8px">Caso abierto: <b>' + esc(nom) + '</b>' +
+            (V5.etapaActual(p) ? ' · ' + esc(V5.ETAPAS[V5.tipoActual(p)] || "") : "") +
+            (Object.keys(pre).length ? ' — se cargaron sus datos registrados.' : '') + '</div>'
+         : '<div class="hint" style="margin-top:0;margin-bottom:8px">Uso libre: no hay paciente abierta. El resultado se muestra en pantalla.</div>') +
+      '<div data-escala="' + id + '" data-val="' + at(JSON.stringify(pre)) + '"></div>' +
+      (p ? '<button class="btn pri" id="calcIns" style="width:100%;margin-top:10px">Guardar en ' + esc(nom) + '</button>'
+         : '<button class="btn pri" id="calcVer" style="width:100%;margin-top:10px">Ver resultado</button>') +
       '<button class="btn ghost" id="calcVolver" style="width:100%;margin-top:6px">← Volver a la lista</button>', null);
     var host = $("#sheetBody [data-escala]");
     pintarEscala(host);
     $("#calcVolver").addEventListener("click", function () { abrirCalculadora(""); });
-    $("#calcIns").addEventListener("click", function () {
-      var p = (state.pacIdx >= 0) ? state.turno.pacientes[state.pacIdx] : null;
+    if ($("#calcVer")) $("#calcVer").addEventListener("click", function () {
       var r = V5.evaluarEscala(id, leerEscala(host));
       if (!r || !r.texto) { aviso(def.nombre, "Completa los datos para obtener un resultado."); return; }
-      if (!p) { aviso("Sin paciente abierta", "Abre una paciente para insertar el resultado.<br><br><b>" + esc(r.texto) + "</b>"); return; }
+      aviso(def.nombre, "<b>" + esc(r.texto) + "</b><br><br>" +
+        '<span style="font-size:11px;color:var(--gris)">Para dejarlo en una paciente, ábrela y vuelve a la calculadora.</span>');
+    });
+    if ($("#calcIns")) $("#calcIns").addEventListener("click", function () {
+      var val = leerEscala(host);
+      var r = V5.evaluarEscala(id, val);
+      if (!r || !r.texto) { aviso(def.nombre, "Completa los datos para obtener un resultado."); return; }
+      // Toda escala resuelta sobre una paciente abierta queda EN su etapa, no solo como
+      // nota: así lo que aparece durante la evolución (Triple I, choque…) llega al documento.
+      var e = V5.etapaActual(p);
+      if (e) { e.datos = e.datos || {}; e.datos[def.render === "bishop" || def.render === "mefi" ? def.render : id] = val; }
       V5.agregarEvento(p, ahoraHHMM(), "Resultado", def.nombre + " — " + r.texto);
       guardarPronto(); cerrarHoja();
-      if ($("#scrPac").classList.contains("on")) pintarTL(p);
-      aviso(def.nombre, "Resultado agregado a la cronología de " + esc(p.ident.nombre || "la paciente") + ".<br><br>" + esc(r.texto));
+      if ($("#scrPac").classList.contains("on")) abrirPaciente(state.pacIdx); else pintarMain();
+      aviso(def.nombre, "Registrado en " + esc(nom) + ".<br><br>" + esc(r.texto));
     });
   }
   $("#fabCalc").addEventListener("click", function () { abrirCalculadora(""); });
