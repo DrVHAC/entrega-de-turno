@@ -129,6 +129,10 @@
           color:var(--gris); margin-bottom:8px}
   .acc .btn{margin:0 5px 5px 0}
   .ev .dif{font-size:10.5px; color:var(--gris); font-style:italic}
+  /* Leyenda del dictado: una por ventana de escritura, no una por campo */
+  .mic{display:flex; align-items:center; gap:7px; margin:8px 0 2px;
+       font-size:11.5px; line-height:1.35; color:var(--gris)}
+  .mic svg{width:13px; height:13px; flex:0 0 13px}
   details.sugcalc{margin-top:14px; border-style:dashed}
   details.sugcalc > summary{color:var(--gris)}
   details.sugcalc .btn{margin:0 5px 5px 0}
@@ -172,7 +176,7 @@
     <button id="btnFirma">Firma</button>
     <button id="btnHist">Historial</button>
   </div>
-  <div class="ver">v5.9.2</div>
+  <div class="ver">v5.12</div>
 </header>
 
 <!-- ===== PRINCIPAL ===== -->
@@ -218,6 +222,7 @@
     <div class="head"><div class="t" id="pacTitle">Paciente</div></div>
     <div class="body">
       <div id="pacIdent"></div>
+      <div id="pacAntec" style="margin-top:14px"></div>
       <div id="pacEtapa"></div>
 
       <div style="margin-top:16px">
@@ -1932,6 +1937,28 @@
                  "Derivada de otra región (Macrozona Norte Grande)",
                  "Devuelta desde Preparto",
                  "Desde otro servicio del hospital"],
+    /* --- Capa de ANTECEDENTES CLÍNICOS: conocer a la paciente antes de ubicarla --- */
+    morbidos: ["Hipertensión crónica", "Diabetes mellitus", "Diabetes gestacional", "Obesidad",
+      "Hipotiroidismo", "Asma", "Epilepsia", "Trombofilia", "Cardiopatía", "Nefropatía",
+      "Enfermedad autoinmune", "VIH", "Sífilis", "Tabaquismo", "Consumo de sustancias",
+      "Cirugía abdominal previa", "Alergia a fármacos", "Sin antecedentes mórbidos"],
+    // Estudio por imágenes: lo que se pide cambia por rama
+    imagenOB: ["ECO TV obstétrica", "Cervicometría", "ECO obstétrica II–III trimestre",
+      "Doppler de arterias uterinas 11–14 sem", "Doppler fetal", "Perfil biofísico",
+      "Monitorización fetal (RBNS)", "Estimación de peso fetal"],
+    imagenGIN: ["ECO transvaginal ginecológica", "ECO abdominal (paciente núbil)",
+      "ECO pélvica", "Doppler anexial", "Histerosonografía"],
+    estudioComun: ["Laboratorio", "ECG", "Radiografía", "TAC", "Resonancia magnética",
+      "Cultivos", "Exámenes especiales", "Interconsulta"],
+    manejoInicial: ["Antibióticos", "Analgesia EV", "Antieméticos", "NIFEPAR", "Tocólisis",
+      "Corticoides para maduración pulmonar", "Sulfato de magnesio", "Antihipertensivos",
+      "Hidratación parenteral", "Transfusión", "Régimen cero", "Observación sin tratamiento",
+      "Resolución quirúrgica inmediata"],
+    // De dónde proviene la que llega YA hospitalizada: no pasó por box, pero sí
+    // es un ingreso de este turno. Es la pregunta que no cabía en «dónde está».
+    origenDerivacion: ["Policlínico ARO", "Policlínico de Ginecología",
+                       "Otro servicio del hospital", "Otro hospital o centro",
+                       "Orden de hospitalización desde urgencia"],
     // Carácter temporal de la urgencia: no hay cirugía programada en turno de urgencia
     caracterQx: ["Inmediata", "Diferida durante el turno"],
     // De dónde llega la paciente al pabellón
@@ -2868,6 +2895,67 @@
     return null;
   }
 
+  /* ---------- SIGNOS VITALES: lectura, no solo registro ---------------------
+     Umbrales de alarma obstétrica de uso corriente. No diagnostican: marcan
+     lo que no debe pasar inadvertido en un ingreso a las cuatro de la mañana. */
+  function lecturaVitales(v) {
+    v = v || {};
+    var al = [], N = function (x) { var n = parseFloat(String(x).replace(",", ".")); return isNaN(n) ? null : n; };
+    var pas = N(v.pas), pad = N(v.pad), fc = N(v.fc), fr = N(v.fr), t = N(v.temp), sat = N(v.sat);
+    if (pas != null && pad != null) {
+      if (pas >= 160 || pad >= 110) al.push({ t: "Crisis hipertensiva (≥ 160/110): manejo inmediato", n: "rojo" });
+      else if (pas >= 140 || pad >= 90) al.push({ t: "Hipertensión (≥ 140/90)", n: "ambar" });
+      if (pas < 90) al.push({ t: "Hipotensión (PAS < 90)", n: "rojo" });
+    }
+    if (fc != null) {
+      if (fc >= 120) al.push({ t: "Taquicardia (≥ 120)", n: "rojo" });
+      else if (fc >= 100) al.push({ t: "Taquicardia (≥ 100)", n: "ambar" });
+    }
+    if (fr != null && fr >= 24) al.push({ t: "Taquipnea (≥ 24)", n: "ambar" });
+    if (t != null) {
+      if (t >= 39) al.push({ t: "Fiebre alta (≥ 39 °C)", n: "rojo" });
+      else if (t >= 38) al.push({ t: "Fiebre (≥ 38 °C)", n: "ambar" });
+      else if (t < 35) al.push({ t: "Hipotermia (< 35 °C)", n: "rojo" });
+    }
+    if (sat != null && sat < 95) al.push({ t: "Saturación < 95%", n: sat < 92 ? "rojo" : "ambar" });
+    // Índice de choque desde los mismos datos, sin volver a teclearlos
+    if (fc && pas) {
+      var ic = Math.round((fc / pas) * 100) / 100;
+      if (ic >= 0.9) al.push({ t: "Índice de choque " + ic + (ic >= 1.7 ? " (≥ 1,7): deterioro grave" : " (≥ 0,9): alerta"),
+                               n: ic >= 1.7 ? "rojo" : "ambar" });
+    }
+    return al;
+  }
+  function txtVitales(v) {
+    v = v || {};
+    var p = [];
+    if (v.pas && v.pad) p.push("PA " + v.pas + "/" + v.pad);
+    if (v.fc) p.push("FC " + v.fc);
+    if (v.fr) p.push("FR " + v.fr);
+    if (v.temp) p.push("T° " + v.temp);
+    if (v.sat) p.push("SatO₂ " + v.sat + "%");
+    return p.join(" · ");
+  }
+  // Resumen de la capa de antecedentes para la ficha y el caso médico-legal
+  function txtAntecedentes(a) {
+    a = a || {};
+    var p = [];
+    if (a.motivo) p.push("Motivo: " + a.motivo);
+    if (a.historia) p.push(a.historia);
+    if (txtLista(a.morbidos)) p.push("Antecedentes: " + txtLista(a.morbidos));
+    if (a.otrosAntec) p.push(a.otrosAntec);
+    if (txtVitales(a.vitales)) p.push(txtVitales(a.vitales));
+    if (a.examen) p.push("Examen: " + a.examen);
+    if (txtLista(a.estudio)) p.push("Se solicita: " + txtLista(a.estudio));
+    if (txtLista(a.manejo)) p.push("Manejo inicial: " + txtLista(a.manejo));
+    return p.filter(Boolean).join(". ");
+  }
+  function hayAntecedentes(a) {
+    a = a || {};
+    return !!(a.motivo || a.historia || a.examen || txtLista(a.morbidos) || txtLista(a.estudio) ||
+              txtLista(a.manejo) || txtVitales(a.vitales));
+  }
+
   function lecturaCCA(n) {
     var c = parseInt(n, 10);
     if (isNaN(c) || c <= 0) return "";
@@ -2986,6 +3074,9 @@
       function conEnc(dx) { return [enc, dx].filter(Boolean).join(", "); }
       var evol = cronologia(p).filter(function (e) { return e.tipo !== "Traslado"; })
                    .map(function (e) { return (e.hora ? e.hora + " " : "") + e.texto; }).join(" · ");
+      // Los antecedentes clínicos viajan al informe SOLO si el médico lo decidió.
+      // Por defecto se quedan en la ficha: son material de trabajo, no de entrega.
+      var ant = (p.antec && p.antec.alInforme) ? txtAntecedentes(p.antec) : "";
 
       // --- Pendientes: se derivan del ESTADO FINAL (nunca las cerradas por alta)
       if (fin === "PREPARTO") {
@@ -2994,14 +3085,14 @@
           origen: d.origen || "",
           heredada: her, heredadaTxt: herTxt, heredadaCorto: herCorto,
           bishop: d.bishop, mefi: d.mefi, gibbsTxt: fmtEscala("triplei", d.triplei), manejo: txtLista(d.manejo),
-          evolucion: [txtLista(d.evolucion), evol].filter(Boolean).join(" · "), condicion: d.condicion || "" });
+          evolucion: [ant, txtLista(d.evolucion), evol].filter(Boolean).join(" · "), condicion: d.condicion || "" });
       }
       if (fin === "OBSERVACION") {
         var o = etapaActual(p).datos || {};
         out.observacion.push({ n: (o.n ? "SOGO " + o.n : ""), ident: id, diagnosticos: conEnc(txtLista(o.diagnosticos)),
           heredada: her, heredadaTxt: herTxt, heredadaCorto: herCorto, origen: o.origen || "",
           condicion: [o.origen || "", fmtEscala("triplei", o.triplei), txtExam(o.examenes), (o.interconsulta ? "IC " + o.interconsulta + (o.motivoIC ? ": " + o.motivoIC : "") : ""),
-                      txtLista(o.manejo), o.condicion || "", evol].filter(Boolean).join(" · ") });
+                      txtLista(o.manejo), o.condicion || "", ant, evol].filter(Boolean).join(" · ") });
       }
       if (fin === "OTRO_SERVICIO") {
         var u = etapaActual(p).datos || {};
@@ -3015,9 +3106,9 @@
             ? [u.hallazgos || "", txtLista(u.conducta),
                (u.controlNuestro && u.controlNuestro.indexOf("Sí") === 0
                  ? u.controlNuestro + (u.fechaControl ? " (" + u.fechaControl + ")" : "") : ""),
-               u.condicion || "", evol].filter(Boolean).join(" · ")
+               u.condicion || "", ant, evol].filter(Boolean).join(" · ")
             : [txtLista(u.manejo), (txtLista(u.pendientes) ? "Pendientes: " + txtLista(u.pendientes) : ""),
-               u.condicion || "", evol].filter(Boolean).join(" · ") });
+               u.condicion || "", ant, evol].filter(Boolean).join(" · ") });
       }
 
       // --- Hechos del turno: se derivan de HABER PASADO por la etapa
@@ -3075,7 +3166,10 @@
           heredada: her, heredadaTxt: herTxt, heredadaCorto: herCorto,
           // la heredada continúa bajo nuestro cuidado aunque su etapa final sea Sala
           continuaHosp: her && (fin === "SALA" || fin === "PABELLON"),
+          // La derivada no pasó por box: su procedencia es de dónde la mandaron,
+          // y es un ingreso de este turno como cualquier otro.
           procedencia: her ? "Turno anterior"
+            : (p.derivada && p.derivada.origen) ? ("Derivada de " + p.derivada.origen)
             : vieneDeObs ? ("Desde SOGO" + (origExt ? " · " + origExt : ""))
             : (origExt || dIng.origen || "Directo desde box"),
           horaIngreso: her ? ((p.heredada.desde ? dmyISO(p.heredada.desde) : "") + (p.heredada.hora ? " " + p.heredada.hora : "")).trim() : (eIng.hora || ""),
@@ -3091,7 +3185,7 @@
           manejo: txtLista(sf.manejo) || txtLista(dIng.manejo) || "",
           condicion: [sf.retorno ? "Devuelta desde Preparto: " + sf.retorno : "", sf.condicion || ""].filter(Boolean).join(" · "),
           // "Condición" es el estado al cierre; la evolución es el relato, y va aparte
-          comentarios: [sf.evolucion || "", txtLista(sf.pendientes) ? "Pendientes: " + txtLista(sf.pendientes) : "", sf.comentarios || ""].filter(Boolean).join(" · ")
+          comentarios: [ant, sf.evolucion || "", txtLista(sf.pendientes) ? "Pendientes: " + txtLista(sf.pendientes) : "", sf.comentarios || ""].filter(Boolean).join(" · ")
         });
       }
 
@@ -3140,6 +3234,8 @@
     agregarEtapa: agregarEtapa, agregarEvento: agregarEvento, cronologia: cronologia, diagnosticoVigente: diagnosticoVigente,
     gatillos: gatillos, eventoDiferido: eventoDiferido, hhmmAhora: hhmmAhora,
     lecturaFUR: lecturaFUR, diasDesdeFUR: diasDesdeFUR, egOperativa: egOperativa,
+    lecturaVitales: lecturaVitales, txtVitales: txtVitales,
+    txtAntecedentes: txtAntecedentes, hayAntecedentes: hayAntecedentes,
     esV4: esV4, adaptarV4: adaptarV4,
     derivarSecciones: derivarSecciones, esDeOtroServicio: esDeOtroServicio,
     esHeredada: esHeredada, horasHospitalizada: horasHospitalizada, textoHeredada: textoHeredada, textoHeredadaCorto: textoHeredadaCorto, dmyISO: dmyISO,
@@ -3249,6 +3345,11 @@
       });
     });
   }
+
+  var MIC_SVG = '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<rect x="9" y="2.5" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.9"/>' +
+    '<path d="M5 11a7 7 0 0 0 14 0" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>' +
+    '<path d="M12 18v3.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
 
   /* ---------- campos por etapa ---------- */
   var CAMPOS = {
@@ -3412,24 +3513,37 @@
         (faltaDau ? "Paciente en box, observación, peritaje o pendiente: falta el N° de DAU. " : "") +
         (rutOK ? "" : "El RUT no es válido.") + '</div>' : "");
 
-    // --- Antecedentes obstétricos: se escriben UNA vez y encabezan todos los diagnósticos
+    // --- Rama clínica: decide QUÉ antecedentes tiene sentido pedir.
+    //     Sin esto, a una paciente ginecológica de 65 años se le pedía FUR y EG.
+    pintarRama(p);
+
+    // --- Antecedentes: se escriben UNA vez y encabezan todos los diagnósticos
     var o = p.obst || {};
     var esMulti = o.paridad === "Multípara" || o.paridad === "Gran multípara";
-    $("#pacIdent").insertAdjacentHTML("beforeend",
+    var esGin = p.rama === "Ginecológica";
+    var postm = !!o.postmenop;
+    if (p.rama) $("#pacIdent").insertAdjacentHTML("beforeend",
       '<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--linea)">' +
-      '<label class="f" style="color:var(--azul);font-size:12px">Antecedentes obstétricos</label>' +
+      '<label class="f" style="color:var(--azul);font-size:12px">Antecedentes ' + (esGin ? "ginecológicos" : "obstétricos") + '</label>' +
       '<div class="row"><div><label class="f">Paridad</label><select data-ob="paridad">' +
       '<option value=""></option>' + cat("paridad").map(function (x) { return '<option' + (o.paridad === x ? " selected" : "") + '>' + esc(x) + '</option>'; }).join("") + '</select></div>' +
       (esMulti ? '<div class="short"><label class="f">N° partos</label><input type="text" inputmode="numeric" data-ob="paridadN" value="' + at(o.paridadN) + '"></div>' : '<div class="short"></div>') +
       '</div>' +
-      '<div class="fld" style="margin-top:8px"><label class="f">FUR · fecha de última regla</label>' +
-      '<input type="date" data-ob="fur" value="' + at(o.fur) + '"></div>' +
-      '<div id="obFUR" style="margin-top:-4px"></div>' +
-      '<div class="row" style="margin-top:8px">' +
-      '<div class="short"><label class="f">EG semanas</label><input type="text" inputmode="numeric" data-ob="egSem" value="' + at(o.egSem) + '" placeholder="40"></div>' +
-      '<div class="short"><label class="f">+ días</label><input type="text" inputmode="numeric" data-ob="egDias" value="' + at(o.egDias) + '" placeholder="3"></div>' +
-      '<div class="short"><label class="f">Cesáreas previas</label><input type="text" inputmode="numeric" data-ob="cca" value="' + at(o.cca) + '"></div>' +
-      '</div>' +
+      // En la rama ginecológica la FUR sigue sirviendo (día del ciclo), salvo que
+      // la paciente sea postmenopáusica: ahí el dato no existe y no se pide.
+      (esGin ? '<label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-top:10px">' +
+               '<input type="checkbox" data-obc="postmenop" style="width:22px;height:22px"' + (postm ? " checked" : "") + '> Postmenopáusica</label>' : "") +
+      ((esGin && postm) ? "" :
+        '<div class="fld" style="margin-top:8px"><label class="f">FUR · fecha de última regla</label>' +
+        '<input type="date" data-ob="fur" value="' + at(o.fur) + '"></div>' +
+        '<div id="obFUR" style="margin-top:-4px"></div>') +
+      // EG y cesáreas previas son obstétricas: no se piden en la rama ginecológica
+      (esGin ? "" :
+        '<div class="row" style="margin-top:8px">' +
+        '<div class="short"><label class="f">EG semanas</label><input type="text" inputmode="numeric" data-ob="egSem" value="' + at(o.egSem) + '" placeholder="40"></div>' +
+        '<div class="short"><label class="f">+ días</label><input type="text" inputmode="numeric" data-ob="egDias" value="' + at(o.egDias) + '" placeholder="3"></div>' +
+        '<div class="short"><label class="f">Cesáreas previas</label><input type="text" inputmode="numeric" data-ob="cca" value="' + at(o.cca) + '"></div>' +
+        '</div>') +
       '<div style="margin-top:7px;font-size:12px;color:var(--azul);font-weight:700" id="obPrev">' + esc(V5.fmtObst(o)) + '</div>' +
       (V5.lecturaCCA(o.cca) ? '<div id="obCCA" style="margin-top:5px;font-size:11.5px;line-height:1.35;color:' +
         (parseInt(o.cca, 10) >= 2 ? "#b8860b" : "var(--gris)") + '">' + esc(V5.lecturaCCA(o.cca)) + '</div>' : '<div id="obCCA"></div>') +
@@ -3437,6 +3551,14 @@
     // --- Procedencia: nueva de este turno o heredada (ya hospitalizada al recibir el turno)
     pintarProcedencia(p);
     pintarFUR(p);
+    $$("#pacIdent [data-obc]").forEach(function (el) {
+      el.addEventListener("change", function () {
+        p.obst = p.obst || {};
+        p.obst[el.getAttribute("data-obc")] = el.checked;
+        if (el.checked) { p.obst.fur = ""; }      // postmenopáusica: la FUR no existe
+        guardarPronto(); abrirPaciente(state.pacIdx);
+      });
+    });
     $$("#pacIdent [data-ob]").forEach(function (el) {
       el.addEventListener("change", function () {
         p.obst = p.obst || {};
@@ -3445,7 +3567,7 @@
         if (el.getAttribute("data-ob") === "paridad") abrirPaciente(state.pacIdx);
         else {
           pintarFUR(p);
-          $("#obPrev").textContent = V5.fmtObst(p.obst);
+          if ($("#obPrev")) $("#obPrev").textContent = V5.fmtObst(p.obst);
           var oc = $("#obCCA");
           if (oc) { oc.textContent = V5.lecturaCCA(p.obst.cca);
             oc.style.cssText = "margin-top:5px;font-size:11.5px;line-height:1.35;color:" + (parseInt(p.obst.cca, 10) >= 2 ? "#b8860b" : "var(--gris)"); }
@@ -3471,9 +3593,33 @@
     });
 
     pintarEtapa(p);
+    pintarAntecedentes(p);
     pintarTL(p);
     ver("#scrPac");
   }
+  /* La rama decide qué antecedentes tienen sentido. Mientras no se elija, no se
+     pide ninguno: preguntar FUR y EG a una paciente de 65 años es un error de
+     formulario que el médico tiene que ignorar en cada ingreso. */
+  function pintarRama(p) {
+    var r = p.rama || "";
+    var html = '<div id="pacRama" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--linea)">' +
+      '<label class="f" style="color:var(--azul);font-size:12px">Tipo de paciente</label>' +
+      '<div class="row2" style="margin-top:2px">' +
+      '<button class="btn sm ' + (r === "Obstétrica" ? "pri" : "ghost") + '" data-rama="Obstétrica" style="flex:1">Obstétrica</button>' +
+      '<button class="btn sm ' + (r === "Ginecológica" ? "pri" : "ghost") + '" data-rama="Ginecológica" style="flex:1">Ginecológica</button></div>' +
+      (r ? "" : '<div class="hint" style="margin-top:7px">Elige la rama: de ella dependen los antecedentes que se piden y la lógica del caso.</div>') +
+      '</div>';
+    var prev = $("#pacRama"); if (prev) prev.remove();
+    $("#pacIdent").insertAdjacentHTML("beforeend", html);
+    $$('#pacRama [data-rama]').forEach(function (b) {
+      b.addEventListener("click", function () {
+        var v = b.getAttribute("data-rama");
+        p.rama = (p.rama === v) ? "" : v;
+        guardarPronto(); abrirPaciente(state.pacIdx);
+      });
+    });
+  }
+
   /* La FUR se lee contra la fecha del turno, no contra hoy. La EG tecleada
      manda siempre: suele venir de ecografía, que es mejor dato que la FUR.
      Si no hay EG, se ofrece la de la FUR en un botón; nunca se sobrescribe. */
@@ -3612,6 +3758,40 @@
     if ($("#bishopHost")) pintarBishop(d.bishop || {});
     if ($("#mefiHost")) pintarMefi(d.mefi || {});
     if ($("#rnHost")) pintarRN(d.resultado || null);
+  }
+  /* Los antecedentes son un ESTADO de la paciente, no un evento con hora: una vez
+     escritos quedan a la vista, plegados, y se siguen corrigiendo todo el turno. */
+  function pintarAntecedentes(p) {
+    var host = $("#pacAntec"); if (!host) return;
+    var hay = V5.hayAntecedentes(p.antec);
+    var sinEtapa = !V5.etapaActual(p);
+    $("#btnEvento").textContent = sinEtapa ? "✚ Antecedentes clínicos" : "✚ Ingresa Nueva Evolución";
+    if (!hay) { host.innerHTML = ""; return; }
+    var al = V5.lecturaVitales((p.antec || {}).vitales);
+    var rojo = al.some(function (x) { return x.n === "rojo"; });
+    host.innerHTML = '<details class="score"><summary>Antecedentes clínicos' +
+      '<span class="res"' + (rojo ? ' style="color:#c0392b"' : "") + '>' +
+      esc(V5.txtVitales((p.antec || {}).vitales) || "registrados") + '</span></summary><div>' +
+      '<div style="font-size:12.5px;line-height:1.5;color:var(--tinta)">' + esc(V5.txtAntecedentes(p.antec)) + '</div>' +
+      al.map(function (x) {
+        return '<div style="margin-top:5px;font-size:11.5px;font-weight:700;color:' +
+          (x.n === "rojo" ? "#c0392b" : "#b8860b") + '">' + esc(x.t) + '</div>'; }).join("") +
+      // Decisión del médico, no de la App: por defecto los antecedentes NO viajan
+      // al informe. Son material clínico de trabajo; el documento de entrega es otra cosa.
+      '<button class="btn sm ' + ((p.antec || {}).alInforme ? "pri" : "ghost") + '" id="antPasa" style="margin-top:9px;width:100%">' +
+        ((p.antec || {}).alInforme ? "✓ Van al informe y al Excel" : "Traspasar a Informe / Excel") + '</button>' +
+      '<div class="hint" style="margin-top:4px">' +
+        ((p.antec || {}).alInforme
+          ? "Se agregan a la columna de evolución de esta paciente."
+          : "Por defecto se quedan aquí. Tú decides si son relevantes para la entrega.") + '</div>' +
+      '<button class="btn sm ghost" id="antEdit" style="margin-top:7px;width:100%">Editar antecedentes</button>' +
+      '</div></details>';
+    $("#antEdit").addEventListener("click", function () { leerPaciente(); abrirAntecedentes(p); });
+    $("#antPasa").addEventListener("click", function () {
+      p.antec = p.antec || {};
+      p.antec.alInforme = !p.antec.alInforme;
+      guardarPronto(); pintarAntecedentes(p); pintarMain();
+    });
   }
   function pintarTL(p) {
     var l = V5.cronologia(p), host = $("#pacTL");
@@ -4045,11 +4225,25 @@
     var her = !!p.heredada, h = p.heredada || {};
     var hrs = her ? V5.horasHospitalizada(p, state.turno.meta.fecha) : null;
     var col = (hrs != null && hrs >= 24) ? "#c0392b" : (hrs != null && hrs >= 12) ? "#b8860b" : "var(--gris)";
+    var der = !!p.derivada, d2 = p.derivada || {};
     var html = '<div id="pacProc" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--linea)">' +
-      '<label class="f" style="color:var(--azul);font-size:12px">Procedencia</label>' +
+      // No es «procedencia»: sus opciones no son lugares de origen sino tipos de
+      // entrada. La procedencia real se pregunta en cada etapa, con su catálogo.
+      '<label class="f" style="color:var(--azul);font-size:12px">Tipo de ingreso</label>' +
       '<div class="row2" style="margin-top:2px">' +
-      '<button class="btn sm ' + (her ? "ghost" : "pri") + '" data-proc="nueva" style="flex:1">Ingreso de este turno</button>' +
-      '<button class="btn sm ' + (her ? "pri" : "ghost") + '" data-proc="her" style="flex:1">Del turno anterior</button></div>';
+      '<button class="btn sm ' + (!her && !der ? "pri" : "ghost") + '" data-proc="nueva" style="flex:1">Por box</button>' +
+      '<button class="btn sm ' + (der ? "pri" : "ghost") + '" data-proc="der" style="flex:1">Derivada</button>' +
+      '<button class="btn sm ' + (her ? "pri" : "ghost") + '" data-proc="her" style="flex:1">Turno anterior</button></div>';
+    // La derivada llega YA hospitalizada pero SÍ es ingreso de este turno:
+    // no pasó por box, así que lo que falta saber es de dónde viene.
+    if (der) {
+      html += '<div class="fld" style="margin-top:9px"><label class="f">¿De dónde proviene la paciente?</label>' +
+        '<select data-der="origen" data-cat="origenDerivacion"><option value=""></option>' +
+        cat("origenDerivacion").map(function (o) {
+          return '<option' + (d2.origen === o ? " selected" : "") + '>' + esc(o) + '</option>'; }).join("") +
+        '<option value="__edit">— Editar lista… —</option></select></div>' +
+        '<div class="hint">Cuenta como ingreso del turno. Trae antecedentes de su atención previa: regístralos en Antecedentes clínicos.</div>';
+    }
     if (her) {
       html += '<div class="row" style="margin-top:9px">' +
         '<div><label class="f">Hospitalizada desde</label><input type="date" data-her="desde" value="' + at(h.desde || ayerISO()) + '"></div>' +
@@ -4065,9 +4259,13 @@
     $$('#pacProc [data-proc]').forEach(function (b) {
       b.addEventListener("click", function () {
         var modo = b.getAttribute("data-proc");
-        if (modo === "her" && !p.heredada) p.heredada = { desde: ayerISO(), hora: "" };
-        if (modo === "nueva" && p.heredada) delete p.heredada;
+        if (modo === "her") { if (!p.heredada) p.heredada = { desde: ayerISO(), hora: "" }; delete p.derivada; }
+        if (modo === "der") { if (!p.derivada) p.derivada = { origen: "" }; delete p.heredada; }
+        if (modo === "nueva") { delete p.heredada; delete p.derivada; }
         guardarPronto(); pintarProcedencia(p); pintarMain();
+        // La heredada YA está en algún lado: hay que decir dónde. La que ingresa
+        // todavía no, y su destino sale de los antecedentes.
+        if (modo === "her" && !V5.etapaActual(p)) setTimeout(function () { elegirEtapa(true, true); }, 80);
       });
     });
     $$('#pacProc [data-her]').forEach(function (e) {
@@ -4075,6 +4273,14 @@
         p.heredada = p.heredada || {};
         p.heredada[e.getAttribute("data-her")] = e.value;
         guardarPronto(); pintarProcedencia(p);
+      });
+    });
+    $$('#pacProc [data-der]').forEach(function (e) {
+      e.addEventListener("change", function () {
+        if (e.value === "__edit") { e.value = ""; abrirCatalogos("origenDerivacion"); return; }
+        p.derivada = p.derivada || {};
+        p.derivada[e.getAttribute("data-der")] = e.value;
+        guardarPronto(); pintarProcedencia(p); pintarMain();
       });
     });
   }
@@ -4099,26 +4305,15 @@
   $("#sheetOk").addEventListener("click", function () { if (sheetOk) sheetOk(); });
 
   /* ---------- acciones de paciente ---------- */
+  // Crear una paciente no pregunta nada: la procedencia (ingreso de este turno o
+  // del anterior) se decide en su ficha, junto al resto de sus datos. Preguntarlo
+  // además en una hoja al crearla era la misma pregunta dos veces.
   $("#btnNueva").addEventListener("click", function () {
-    hoja("Nueva paciente",
-      '<button class="opt" data-np="nueva">Ingresa en este turno<div style="font-size:11px;color:var(--gris);font-weight:400;margin-top:2px">Llega por box, SOGO o derivación. Cuenta como ingreso del turno.</div></button>' +
-      '<button class="opt" data-np="her">Ya estaba hospitalizada<div style="font-size:11px;color:var(--gris);font-weight:400;margin-top:2px">Recibida del turno anterior, con manejo establecido. No cuenta como ingreso.</div></button>' +
-      '<div class="row" style="margin-top:10px" id="npHer">' +
-      '<div><label class="f">Hospitalizada desde</label><input type="date" id="npDesde" value="' + ayerISO() + '"></div>' +
-      '<div class="short"><label class="f">Hora</label><input type="time" id="npHora"></div></div>' +
-      '<div class="hint">La fecha y hora solo se usan si eliges "ya estaba hospitalizada".</div>', null);
-    $$("#sheetBody [data-np]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var modo = b.getAttribute("data-np");
-        var p = V5.nuevaPaciente();
-        if (modo === "her") p.heredada = { desde: $("#npDesde").value || ayerISO(), hora: $("#npHora").value || "" };
-        state.turno.pacientes.push(p);
-        state.pacIdx = state.turno.pacientes.length - 1;
-        guardarPronto(); cerrarHoja();
-        abrirPaciente(state.pacIdx);
-        setTimeout(function () { elegirEtapa(true, modo === "her"); }, 80);
-      });
-    });
+    var p = V5.nuevaPaciente();
+    state.turno.pacientes.push(p);
+    state.pacIdx = state.turno.pacientes.length - 1;
+    guardarPronto();
+    abrirPaciente(state.pacIdx);
   });
   // Opciones contextuales: qué ofrecer según de dónde viene la paciente
   var PROPIA = { PREPARTO: 1, PARTO: 1, PABELLON: 1, SALA: 1, OBSERVACION: 1 };
@@ -4131,7 +4326,15 @@
         d.tipoEstadia = (pAct && V5.esDeOtroServicio(pAct)) ? "Regreso a su servicio tras cirugía" : "Traslado (paciente nuestra)";
       }
       if (t === "OTRO_SERVICIO" && origen === "INICIO") d.tipoEstadia = "Interconsulta (paciente de otro servicio)";
-      return { dest: t, txt: V5.ETAPAS[t] || t, datos: d };
+      // El destino debe decir QUÉ es, no solo a qué casilla va: «Otro servicio»
+      // no dejaba ver que a la paciente de otro servicio se la está devolviendo.
+      var txt = V5.ETAPAS[t] || t;
+      if (t === "OTRO_SERVICIO") {
+        if (d.tipoEstadia === "Regreso a su servicio tras cirugía") txt = "Devolver a su servicio tras la cirugía";
+        else if (d.tipoEstadia === "Traslado (paciente nuestra)") txt = "Trasladar a otro servicio";
+        else if (d.tipoEstadia === "Interconsulta (paciente de otro servicio)") txt = "Interconsulta en otro servicio";
+      }
+      return { dest: t, txt: txt, datos: d };
     });
     // Tras una cesárea hay que registrar el nacimiento: sin este destino la cesárea
     // no llegaba a la sección Nacimientos ni a los recuentos del turno.
@@ -4210,7 +4413,10 @@
   var UBIC_HEREDADA = ["PREPARTO", "SALA", "OBSERVACION", "OTRO_SERVICIO", "PABELLON"];
   function elegirEtapa(inicial, heredada) {
     var p = state.turno.pacientes[state.pacIdx];
-    var origen = inicial ? "INICIO" : V5.tipoActual(p);
+    // Sin etapa asignada la paciente está en box: su origen es INICIO, no vacío.
+    // Sin esto, la interconsulta no se preseleccionaba y la paciente de otro
+    // servicio terminaba contando como ingreso nuestro.
+    var origen = inicial ? "INICIO" : (V5.tipoActual(p) || "INICIO");
     // Los destinos se calculan sobre lo que hay escrito EN PANTALLA. Sin esto, una
     // cesárea tecleada a mano no ofrecía registrar el nacimiento: el modelo todavía
     // no sabía que la rama era obstétrica.
@@ -4277,15 +4483,20 @@
       profesional: state.turno.meta.nombreSaliente || (state.turno.meta.staff || []).join(" / "),
       rut: state.turno.meta.rutSaliente || "",
       equipo: (state.turno.meta.staff || []).join(" / ") + ((state.turno.meta.internos || []).length ? " · Internos: " + state.turno.meta.internos.join(" / ") : ""),
-      motivo: "Paciente atendida durante el turno del " + dmy(state.turno.meta.fecha) + ". Recorrido: " + etapas + ".",
+      motivo: [(p.antec && p.antec.motivo ? p.antec.motivo + "." : ""),
+               "Paciente atendida durante el turno del " + dmy(state.turno.meta.fecha) + ". Recorrido: " + etapas + "."].filter(Boolean).join(" "),
       diagnostico: V5.diagnosticoVigente(p),
-      hallazgos: [d.hallazgos || "", V5.txtExam(d.examenes) || "", DocxCore.fmtBishop({ bishop: d.bishop }) || "", DocxCore.fmtMefi({ mefi: d.mefi }) || ""].filter(Boolean).join(". "),
+      hallazgos: [((p.antec || {}).vitales ? V5.txtVitales(p.antec.vitales) : ""),
+                  (p.antec && p.antec.examen) || "",
+                  d.hallazgos || "", V5.txtExam(d.examenes) || "", DocxCore.fmtBishop({ bishop: d.bishop }) || "", DocxCore.fmtMefi({ mefi: d.mefi }) || ""].filter(Boolean).join(". "),
       decision: V5.txtLista(d.manejo) || d.decision || "",
       procedimiento: [d.intervencion ? V5.txtLista(d.intervencion) : "", proc].filter(Boolean).join(". "),
       complicaciones: [V5.txtLista(d.incidencias), (d.incidentes === "Con incidentes" ? proc : "")].filter(Boolean).join(". "),
       estadoFinal: [d.estadoMaterno || "", d.condicion || "", DocxCore.fmtResultado({ resultado: d.resultado }) || ""].filter(Boolean).join(". "),
       derivaciones: V5.txtLista(d.pendientes) || "",
-      consentimiento: "", antecedentes: "", observaciones: "",
+      consentimiento: "", observaciones: "",
+      antecedentes: [(p.antec && p.antec.historia) || "", V5.txtLista((p.antec || {}).morbidos),
+                     (p.antec && p.antec.otrosAntec) || ""].filter(Boolean).join(". "),
       cronologia: cron, registradoEn: new Date().toLocaleString("es-CL") };
     state.medlegal.push(c); kvSet("v5_medlegal", state.medlegal); badgeML();
     abrirML(state.medlegal.length - 1);
@@ -4295,7 +4506,97 @@
      El relato es el registro primario; los botones de acción son el ancla
      estructurada DENTRO del relato, en el mismo gesto. La hora es la DEL HECHO
      (se escribe después, no durante); la de tecleo se guarda sola.             */
-  $("#btnEvento").addEventListener("click", function () { nuevaEvolucion(); });
+  // Antes de tener destino, lo que corresponde es CONOCER a la paciente.
+  // Después, cada avance es una evolución. Un botón, el que toca en cada momento.
+  $("#btnEvento").addEventListener("click", function () {
+    var p = state.turno.pacientes[state.pacIdx];
+    if (p && !V5.etapaActual(p)) abrirAntecedentes(p); else nuevaEvolucion();
+  });
+
+  /* ---------- ANTECEDENTES CLÍNICOS ----------------------------------------
+     Anamnesis · examen · trabajo diagnóstico · manejo inicial. Vive en la
+     PACIENTE, no en una etapa: se escribe antes de que tenga destino, y sigue
+     siendo editable todo el turno a medida que llega información.            */
+  function abrirAntecedentes(p) {
+    var a = p.antec || {};
+    var v = a.vitales || {};
+    var esGin = p.rama === "Ginecológica";
+    function num(k, t, ph) {
+      return '<div class="short"><label class="f">' + t + '</label>' +
+        '<input type="text" inputmode="decimal" data-sv="' + k + '" value="' + at(v[k]) + '" placeholder="' + ph + '"></div>';
+    }
+    var cuerpo =
+      '<div class="fld"><label class="f">Motivo de consulta</label>' +
+        '<input type="text" data-an="motivo" value="' + at(a.motivo) + '" placeholder="Ej.: dolor abdominal, metrorragia"></div>' +
+      '<div class="mic">' + MIC_SVG +
+        'Para dictar en vez de escribir, toca el micrófono del teclado del iPhone.</div>' +
+      '<div class="fld"><label class="f">Historia breve</label>' +
+        '<textarea data-an="historia" rows="3" placeholder="Puedes dictar con el micrófono del teclado.">' + esc(a.historia || "") + '</textarea></div>' +
+      '<details class="score"' + (V5.txtLista(a.morbidos) ? "" : " open") + '><summary>Antecedentes mórbidos' +
+        '<span class="res">' + esc(V5.txtLista(a.morbidos) || "sin marcar") + '</span></summary>' +
+        '<div data-listaHost="morbidos" data-cat2="morbidos" data-det=""></div></details>' +
+      '<div class="fld" style="margin-top:8px"><label class="f">Otros antecedentes · alergias · fármacos</label>' +
+        '<textarea data-an="otrosAntec" rows="2">' + esc(a.otrosAntec || "") + '</textarea></div>' +
+
+      '<div class="paso">Examen</div>' +
+      '<div class="row">' + num("pas", "PAS", "120") + num("pad", "PAD", "80") + num("fc", "FC", "80") + '</div>' +
+      '<div class="row" style="margin-top:8px">' + num("fr", "FR", "16") + num("temp", "T° (°C)", "36,5") + num("sat", "SatO₂ %", "98") + '</div>' +
+      '<div id="svLectura"></div>' +
+      '<div class="fld" style="margin-top:10px"><label class="f">Examen físico</label>' +
+        '<textarea data-an="examen" rows="3">' + esc(a.examen || "") + '</textarea></div>' +
+
+      '<div class="paso">Trabajo diagnóstico inicial</div>' +
+      '<details class="score"' + (V5.txtLista(a.imagen) ? "" : " open") + '><summary>Imágenes ' + (esGin ? "ginecológicas" : "obstétricas") +
+        '<span class="res">' + esc(V5.txtLista(a.imagen) || "sin marcar") + '</span></summary>' +
+        '<div data-listaHost="imagen" data-cat2="' + (esGin ? "imagenGIN" : "imagenOB") + '" data-det=""></div></details>' +
+      '<details class="score"' + (V5.txtLista(a.estudio) ? "" : " open") + '><summary>Laboratorio y otros estudios' +
+        '<span class="res">' + esc(V5.txtLista(a.estudio) || "sin marcar") + '</span></summary>' +
+        '<div data-listaHost="estudio" data-cat2="estudioComun" data-det="1"></div></details>' +
+
+      '<div class="paso">Manejo inicial</div>' +
+      '<details class="score"' + (V5.txtLista(a.manejo) ? "" : " open") + '><summary>Indicaciones' +
+        '<span class="res">' + esc(V5.txtLista(a.manejo) || "sin marcar") + '</span></summary>' +
+        '<div data-listaHost="manejo" data-cat2="manejoInicial" data-det="1"></div></details>' +
+      '<div class="hint" style="margin-top:9px">Con esto definido, usa «Siguiente etapa» para darle destino.</div>';
+
+    hoja("Antecedentes clínicos", cuerpo, function () { guardarAntecedentes(p); cerrarHoja(); abrirPaciente(state.pacIdx); });
+    $$("#sheetBody [data-listaHost]").forEach(function (h) {
+      pintarLista(h, a[h.getAttribute("data-listaHost")] || []);
+    });
+    $$("#sheetBody [data-sv]").forEach(function (el) {
+      el.addEventListener("input", pintarVitales);
+      el.addEventListener("change", pintarVitales);
+    });
+    pintarVitales();
+  }
+  function leerVitales() {
+    var v = {};
+    $$("#sheetBody [data-sv]").forEach(function (el) { v[el.getAttribute("data-sv")] = el.value.trim(); });
+    return v;
+  }
+  function pintarVitales() {
+    var host = $("#svLectura"); if (!host) return;
+    var al = V5.lecturaVitales(leerVitales());
+    if (!al.length) { host.innerHTML = ""; return; }
+    host.innerHTML = al.map(function (x) {
+      var c = x.n === "rojo" ? "#c0392b" : "#b8860b";
+      return '<div style="margin-top:6px;font-size:11.5px;font-weight:700;line-height:1.35;color:' + c + '">' + esc(x.t) + '</div>';
+    }).join("");
+  }
+  function guardarAntecedentes(p) {
+    var a = p.antec || (p.antec = {});
+    $$("#sheetBody [data-an]").forEach(function (el) { a[el.getAttribute("data-an")] = el.value.trim(); });
+    a.vitales = leerVitales();
+    $$("#sheetBody [data-listaHost]").forEach(function (h) {
+      var k = h.getAttribute("data-listaHost"), antes = a[k] || [], ahora = leerLista(h);
+      if (h.getAttribute("data-det")) {
+        var m = {}; (Array.isArray(antes) ? antes : []).forEach(function (x) { if (x && x.n) m[x.n] = x.d || ""; });
+        ahora.forEach(function (x) { if (x && x.n && m[x.n] && !x.d) x.d = m[x.n]; });
+      }
+      a[k] = ahora;
+    });
+    guardarPronto();
+  }
 
   function nuevaEvolucion() {
     var p = state.turno.pacientes[state.pacIdx]; if (!p) return;
@@ -4314,6 +4615,8 @@
       '<div class="hint" style="margin:6px 0 0">Si lo escribes después del hecho, corrige la hora: queda registrado cuándo ocurrió y cuándo lo escribiste.</div>' +
       '<div class="fld" style="margin-top:10px"><label class="f">Evolución</label>' +
         '<textarea id="evX" rows="5" placeholder="Paciente evoluciona… se indica… Puedes dictar con el micrófono del teclado."></textarea></div>' +
+      '<div class="mic">' + MIC_SVG +
+        'Para dictar en vez de escribir, toca el micrófono del teclado del iPhone.</div>' +
       '<div id="evGat"></div>' +
       '<div class="acc"><div class="t">Registrar además</div>' +
         '<button class="btn sm ghost" data-acc="etapa">Cambiar de etapa o servicio</button>' +
